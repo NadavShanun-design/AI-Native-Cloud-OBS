@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
+import fs from 'fs';
 import { createClient } from 'redis';
 import { AccessToken } from 'livekit-server-sdk';
 import { ApiResponse, CameraConfig, SystemConfig, WSEvent } from '@ai-obs/types';
@@ -19,11 +20,22 @@ const config = {
   server: {
     port: parseInt(process.env.PORT || '3000', 10),
     host: process.env.HOST || '0.0.0.0',
+    useHttps: process.env.USE_HTTPS === 'true',
+    certPath: process.env.CERT_PATH || '/app/certs/10.103.82.101+2.pem',
+    keyPath: process.env.KEY_PATH || '/app/certs/10.103.82.101+2-key.pem',
   },
   logging: {
     level: process.env.LOG_LEVEL || 'info',
   },
 };
+
+// Configure HTTPS if enabled
+const httpsOptions = config.server.useHttps ? {
+  https: {
+    cert: fs.existsSync(config.server.certPath) ? fs.readFileSync(config.server.certPath) : undefined,
+    key: fs.existsSync(config.server.keyPath) ? fs.readFileSync(config.server.keyPath) : undefined,
+  }
+} : {};
 
 const fastify = Fastify({
   logger: {
@@ -33,6 +45,7 @@ const fastify = Fastify({
         ? { target: 'pino-pretty' }
         : undefined,
   },
+  ...httpsOptions,
 });
 
 const redisClient = createClient({ url: config.redis.url });
@@ -54,12 +67,92 @@ async function main() {
 
     // Serve static files (camera app)
     await fastify.register(fastifyStatic, {
-      root: path.join(__dirname, '../../web-obs/public'),
+      root: path.join(process.cwd(), 'web-obs/public'),
       prefix: '/static/',
     });
 
     // Health check
-    fastify.get('/health', async () => {
+    fastify.get('/health', async (request, reply) => {
+      // If accessed from browser, show nice HTML page
+      const userAgent = request.headers['user-agent'] || '';
+      const isBrowser = userAgent.includes('Mozilla') || userAgent.includes('Safari') || userAgent.includes('Chrome');
+
+      if (isBrowser && !request.headers.accept?.includes('application/json')) {
+        const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Certificate Trusted ✅</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: white;
+      padding: 48px;
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 500px;
+    }
+    h1 {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    p {
+      font-size: 18px;
+      color: #475569;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .status {
+      display: inline-block;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      border-radius: 12px;
+      font-weight: 700;
+      margin-bottom: 32px;
+    }
+    button {
+      padding: 16px 32px;
+      font-size: 16px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform 0.2s;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>✅</h1>
+    <div class="status">Certificate Trusted!</div>
+    <p><strong>Success!</strong> Your browser now trusts the SSL certificate. You can now use all camera features.</p>
+    <button onclick="window.history.back()">← Back to Camera</button>
+  </div>
+</body>
+</html>
+        `;
+        return reply.type('text/html').send(html);
+      }
+
       return { status: 'ok', timestamp: Date.now() };
     });
 
@@ -163,7 +256,16 @@ async function main() {
 
     // Serve camera app for phones
     fastify.get('/camera', async (request, reply) => {
-      return reply.sendFile('camera.html');
+      const filePath = path.join(process.cwd(), 'web-obs/public/camera.html');
+      const html = fs.readFileSync(filePath, 'utf-8');
+      reply.type('text/html').send(html);
+    });
+
+    // Serve simple camera test page
+    fastify.get('/camera-test', async (request, reply) => {
+      const filePath = path.join(process.cwd(), 'web-obs/public/camera-test.html');
+      const html = fs.readFileSync(filePath, 'utf-8');
+      reply.type('text/html').send(html);
     });
 
     // WebSocket endpoint for real-time events
@@ -228,7 +330,8 @@ async function main() {
       host: config.server.host,
     });
 
-    fastify.log.info(`API Gateway running on port ${config.server.port}`);
+    const protocol = config.server.useHttps ? 'https' : 'http';
+    fastify.log.info(`API Gateway running on ${protocol}://0.0.0.0:${config.server.port}`);
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

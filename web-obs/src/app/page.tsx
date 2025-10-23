@@ -38,10 +38,13 @@ export default function Home() {
 
   if (!token) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-400">Connecting to LiveKit...</p>
+          <div className="relative">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-slate-200 border-t-violet-600 mx-auto mb-6"></div>
+            <div className="absolute inset-0 rounded-full bg-violet-500/10 blur-xl"></div>
+          </div>
+          <p className="text-slate-600 font-medium">Connecting to LiveKit...</p>
         </div>
       </div>
     );
@@ -62,40 +65,61 @@ export default function Home() {
 
 function Main({ connected }: { connected: boolean }) {
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold">AI-OBS</h1>
-            <div className="flex items-center gap-2">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  connected ? 'bg-green-500' : 'bg-red-500'
-                }`}
-              ></div>
-              <span className="text-sm text-gray-400">
-                {connected ? 'Connected' : 'Disconnected'}
-              </span>
+      <header className="bg-white/80 backdrop-blur-xl border-b border-slate-200/60 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-[1800px] mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">AI-OBS</h1>
+                  <p className="text-xs text-slate-500 font-medium">Intelligent Auto-Director</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100">
+                <div className="relative">
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      connected ? 'bg-emerald-500' : 'bg-red-500'
+                    } transition-all duration-300`}
+                  ></div>
+                  {connected && (
+                    <div className="absolute inset-0 w-2 h-2 rounded-full bg-emerald-400 animate-ping"></div>
+                  )}
+                </div>
+                <span className="text-xs font-semibold text-slate-700">
+                  {connected ? 'Live' : 'Offline'}
+                </span>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <a
-              href="/cameras"
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition font-medium text-sm"
-            >
-              📱 Connect Cameras
-            </a>
-            <div className="text-sm text-gray-400">
-              Intelligent Auto-Director
+
+            <div className="flex items-center gap-3">
+              <a
+                href="/cameras"
+                className="group px-5 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 rounded-xl transition-all duration-200 font-semibold text-sm text-white shadow-lg shadow-violet-500/25 hover:shadow-xl hover:shadow-violet-500/30 hover:-translate-y-0.5"
+              >
+                <span className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Connect Cameras
+                </span>
+              </a>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Layout */}
-      <div className="p-6 space-y-6">
-        {/* Top: Program Monitor */}
+      <div className="max-w-[1800px] mx-auto px-6 py-8 space-y-8">
+        {/* Top: Program Monitor & Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <ProgramMonitor />
@@ -105,7 +129,7 @@ function Main({ connected }: { connected: boolean }) {
           </div>
         </div>
 
-        {/* Middle: Camera Previews */}
+        {/* Middle: Camera Previews with Rankings */}
         <CameraGrid />
 
         {/* Bottom: Controls */}

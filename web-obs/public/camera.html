@@ -7,9 +7,9 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      background: #000;
-      color: #fff;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #f5f7fa 0%, #f8fafc 50%, #f1f5f9 100%);
+      color: #1e293b;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
       overflow: hidden;
     }
     #container {
@@ -17,73 +17,126 @@
       height: 100vh;
       display: flex;
       flex-direction: column;
+      padding: 12px;
+      gap: 12px;
     }
     #preview {
       flex: 1;
       width: 100%;
       object-fit: cover;
-      background: #1a1a1a;
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      border: 3px solid rgba(255,255,255,0.1);
     }
     #controls {
-      padding: 20px;
-      background: rgba(0,0,0,0.8);
+      padding: 24px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      border: 2px solid rgba(226, 232, 240, 0.8);
       display: flex;
       flex-direction: column;
-      gap: 15px;
+      gap: 16px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.1);
     }
     #status {
       font-size: 14px;
-      color: #888;
+      font-weight: 600;
       text-align: center;
+      padding: 8px 16px;
+      border-radius: 12px;
+      background: #f1f5f9;
     }
-    .status-connecting { color: #ffa500; }
-    .status-connected { color: #00ff00; }
-    .status-error { color: #ff0000; }
+    .status-connecting {
+      color: #f59e0b;
+      background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    }
+    .status-connected {
+      color: #10b981;
+      background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+      animation: pulseGlow 2s ease-in-out infinite;
+    }
+    .status-error {
+      color: #ef4444;
+      background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    }
     #cameraId {
-      font-size: 24px;
-      font-weight: bold;
+      font-size: 28px;
+      font-weight: 800;
       text-align: center;
-      color: #fff;
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
     button {
-      padding: 15px;
-      font-size: 16px;
+      padding: 18px;
+      font-size: 17px;
       border: none;
-      border-radius: 8px;
+      border-radius: 16px;
       cursor: pointer;
-      font-weight: 600;
+      font-weight: 700;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      letter-spacing: 0.3px;
     }
     #connectBtn {
-      background: #00ff00;
-      color: #000;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #fff;
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    }
+    #connectBtn:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
     }
     #disconnectBtn {
-      background: #ff0000;
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
       color: #fff;
       display: none;
+      box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
     }
     #flipBtn {
-      background: #333;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
       color: #fff;
       display: none;
+      box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
     }
     .connected #connectBtn { display: none; }
     .connected #disconnectBtn { display: block; }
     .connected #flipBtn { display: block; }
     select {
-      padding: 15px;
-      font-size: 16px;
-      border: 2px solid #333;
-      border-radius: 8px;
-      background: #1a1a1a;
-      color: #fff;
+      padding: 16px;
+      font-size: 15px;
+      border: 2px solid #e2e8f0;
+      border-radius: 14px;
+      background: #ffffff;
+      color: #1e293b;
       width: 100%;
+      display: none;
+      font-weight: 600;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .connected select {
+      display: block;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); box-shadow: 0 8px 24px rgba(16, 185, 129, 0.5); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 10px rgba(16, 185, 129, 0.3); }
+      50% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.5); }
     }
   </style>
 </head>
 <body>
   <div id="container">
-    <video id="preview" autoplay playsinline muted></video>
+    <video id="preview" autoplay playsinline muted webkit-playsinline></video>
     <div id="controls">
       <div id="cameraId"></div>
       <div id="status" class="status-connecting">Initializing...</div>
@@ -96,13 +149,34 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/livekit-client@1.15.13/dist/livekit-client.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"
+          crossorigin="anonymous"
+          onerror="console.error('Failed to load LiveKit library from CDN');
+                   document.getElementById('status').textContent='Error: Could not load LiveKit library';
+                   document.getElementById('status').className='status-error';">
+  </script>
   <script>
+    // Wait for page to fully load
+    console.log('🚀 Camera app starting...');
+
+    // Check if LiveKit loaded
+    if (typeof LivekitClient === 'undefined') {
+      console.error('❌ LiveKit library not loaded!');
+      document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('status').textContent = 'Error: LiveKit library failed to load';
+        document.getElementById('status').className = 'status-error';
+      });
+    } else {
+      console.log('✅ LiveKit library loaded successfully');
+    }
+
     // Configuration
     const urlParams = new URLSearchParams(window.location.search);
     const cameraId = urlParams.get('id') || 'cam-' + Math.floor(Math.random() * 5 + 1);
     const apiUrl = window.location.origin;
     const roomName = 'main';
+
+    console.log('📋 Config:', { cameraId, apiUrl, roomName });
 
     // DOM elements
     const preview = document.getElementById('preview');
@@ -184,36 +258,68 @@
 
     async function getToken() {
       updateStatus('Getting access token...', 'status-connecting');
+      console.log('🔑 Requesting token from:', `${apiUrl}/token`);
 
-      const response = await fetch(`${apiUrl}/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          identity: cameraId,
-          room: roomName,
-          role: 'camera'
-        })
-      });
+      try {
+        const response = await fetch(`${apiUrl}/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            identity: cameraId,
+            room: roomName,
+            role: 'camera'
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        console.log('📡 Token response status:', response.status);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Token request failed:', errorText);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        console.log('✅ Token received:', data);
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to get token');
+        }
+
+        return data.data;
+      } catch (error) {
+        console.error('❌ Error getting token:', error);
+
+        // Check if it's a network error (likely certificate issue)
+        if (error.message.includes('Failed to fetch') || error.message.includes('Load failed') || error instanceof TypeError) {
+          throw new Error('CERTIFICATE_ERROR');
+        }
+
+        throw error;
       }
-
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to get token');
-      }
-
-      return data.data;
     }
 
     async function connectCamera() {
       try {
+        console.log('🎥 Starting camera connection...');
+
+        // Check if LiveKit is available
+        if (typeof LivekitClient === 'undefined') {
+          console.error('❌ LiveKit library not available');
+          updateStatus('Error: LiveKit library not loaded', 'status-error');
+          return;
+        }
+
+        // Stop button animation
+        connectBtn.style.animation = '';
+
         // Get token
         const { token, url } = await getToken();
+        console.log('🔗 Connecting to:', url);
         updateStatus('Connecting to LiveKit...', 'status-connecting');
 
         // Create room
+        console.log('🏠 Creating LiveKit room...');
         room = new LivekitClient.Room({
           adaptiveStream: true,
           dynacast: true,
@@ -222,48 +328,154 @@
             facingMode: 'environment' // Back camera by default
           }
         });
+        console.log('✅ Room created');
 
-        // Setup event handlers
+        // Setup event handlers with detailed logging
         room.on(LivekitClient.RoomEvent.Connected, () => {
+          console.log('✅ Connected to LiveKit room');
           updateStatus(`Connected as ${cameraId}`, 'status-connected');
           container.classList.add('connected');
         });
 
-        room.on(LivekitClient.RoomEvent.Disconnected, () => {
+        room.on(LivekitClient.RoomEvent.Disconnected, (reason) => {
+          console.log('🔌 Disconnected from room. Reason:', reason);
           updateStatus('Disconnected', 'status-error');
           container.classList.remove('connected');
         });
 
         room.on(LivekitClient.RoomEvent.Reconnecting, () => {
+          console.log('🔄 Reconnecting...');
           updateStatus('Reconnecting...', 'status-connecting');
         });
 
         room.on(LivekitClient.RoomEvent.Reconnected, () => {
+          console.log('✅ Reconnected');
           updateStatus(`Connected as ${cameraId}`, 'status-connected');
         });
 
+        room.on(LivekitClient.RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+          console.log('📊 Connection quality:', quality, 'Participant:', participant.identity);
+        });
+
+        room.on(LivekitClient.RoomEvent.SignalConnected, () => {
+          console.log('📡 Signal connected');
+        });
+
+        room.on(LivekitClient.RoomEvent.MediaDevicesError, (error) => {
+          console.error('🎥 Media devices error:', error);
+          updateStatus(`Camera error: ${error.message}`, 'status-error');
+        });
+
+        // Pre-request camera permission BEFORE connecting
+        console.log('📹 Pre-requesting camera/microphone access...');
+        updateStatus('Requesting camera permission...', 'status-connecting');
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment' },
+            audio: true
+          });
+          console.log('✅ Got camera permission!', stream.getTracks().map(t => `${t.kind}: ${t.label}`));
+          // Stop the test stream
+          stream.getTracks().forEach(track => track.stop());
+        } catch (permError) {
+          console.error('❌ Camera permission denied:', permError);
+          updateStatus('Camera permission denied - please allow camera access', 'status-error');
+          throw new Error('Camera permission denied. Please allow camera and microphone access.');
+        }
+
         // Connect to room
-        await room.connect(url, token);
+        console.log('🔌 Connecting to room with URL:', url);
+        updateStatus('Connecting to LiveKit...', 'status-connecting');
+
+        await room.connect(url, token, {
+          autoSubscribe: true,
+          publishDefaults: {
+            videoSimulcastLayers: [
+              LivekitClient.VideoPresets.h720,
+              LivekitClient.VideoPresets.h540,
+              LivekitClient.VideoPresets.h216,
+            ],
+          },
+        });
+        console.log('✅ Connected to room');
 
         // Enable camera
+        console.log('📹 Enabling camera...');
         updateStatus('Starting camera...', 'status-connecting');
         await room.localParticipant.setCameraEnabled(true);
+        console.log('✅ Camera enabled');
 
         // Enable microphone
+        console.log('🎤 Enabling microphone...');
         await room.localParticipant.setMicrophoneEnabled(true);
+        console.log('✅ Microphone enabled');
 
         // Get local video track and attach to preview
+        console.log('🎬 Attaching video to preview...');
         const videoPublication = Array.from(room.localParticipant.videoTracks.values())[0];
         if (videoPublication && videoPublication.track) {
           localVideoTrack = videoPublication.track;
           localVideoTrack.attach(preview);
+          console.log('✅ Video attached to preview');
+        } else {
+          console.warn('⚠️ No video track found');
         }
 
         updateStatus(`Streaming as ${cameraId}`, 'status-connected');
+        console.log('🎉 All set! Streaming as', cameraId);
+
+        // Re-enumerate cameras now that we have permission
+        await enumerateCameras();
 
       } catch (error) {
-        console.error('Connection error:', error);
-        updateStatus(`Error: ${error.message}`, 'status-error');
+        console.error('❌ Connection error:', error);
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+
+        // Handle certificate error specifically
+        if (error.message === 'CERTIFICATE_ERROR') {
+          const trustUrl = `${apiUrl}/health`;
+          updateStatus('⚠️ Certificate not trusted', 'status-error');
+
+          // Add a help button
+          const helpBtn = document.createElement('button');
+          helpBtn.textContent = '🔓 Trust Certificate (Required)';
+          helpBtn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+          helpBtn.style.marginTop = '12px';
+          helpBtn.onclick = () => {
+            window.open(trustUrl, '_blank');
+            setTimeout(() => {
+              updateStatus('After trusting, tap "Start Broadcasting" again', 'status-connecting');
+              connectBtn.style.animation = 'pulse 1.5s infinite';
+            }, 1000);
+          };
+
+          // Insert after the main connect button
+          if (!document.getElementById('trustBtn')) {
+            helpBtn.id = 'trustBtn';
+            connectBtn.parentNode.insertBefore(helpBtn, connectBtn.nextSibling);
+          }
+
+          return;
+        }
+
+        // Provide specific error messages
+        let errorMsg = error.message;
+        if (error.message.includes('pc connection')) {
+          errorMsg = 'WebRTC connection failed. Check: 1) Camera/mic permissions 2) Firewall settings 3) Network connection';
+        } else if (error.message.includes('permission')) {
+          errorMsg = 'Camera/microphone permission denied. Please allow access and try again.';
+        } else if (error.message.includes('NotFoundError')) {
+          errorMsg = 'No camera found. Please connect a camera and try again.';
+        } else if (error.message.includes('timeout')) {
+          errorMsg = 'Connection timeout. Check network and LiveKit server.';
+        }
+
+        updateStatus(`Error: ${errorMsg}`, 'status-error');
+        // Restart animation on error
+        connectBtn.style.animation = 'pulse 1.5s infinite';
       }
     }
 
@@ -285,6 +497,41 @@
     disconnectBtn.addEventListener('click', disconnectCamera);
     flipBtn.addEventListener('click', flipCamera);
 
+    // Check certificate trust on page load
+    async function checkCertificateTrust() {
+      try {
+        updateStatus('Checking connection...', 'status-connecting');
+        const response = await fetch(`${apiUrl}/health`);
+        if (response.ok) {
+          console.log('✅ Certificate is trusted!');
+          updateStatus('Click "Start Broadcasting" to begin', 'status-connecting');
+          setTimeout(() => {
+            updateStatus('👆 Tap "Start Broadcasting" below', 'status-connecting');
+            connectBtn.style.animation = 'pulse 1.5s infinite';
+          }, 500);
+        }
+      } catch (error) {
+        console.error('❌ Certificate not trusted:', error);
+        updateStatus('⚠️ Setup required: Trust certificate first', 'status-error');
+
+        // Add trust button
+        const trustBtn = document.createElement('button');
+        trustBtn.textContent = '🔓 Trust Certificate (1-Click Setup)';
+        trustBtn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+        trustBtn.style.boxShadow = '0 6px 20px rgba(245, 158, 11, 0.4)';
+        trustBtn.onclick = () => {
+          window.location.href = `${apiUrl}/health`;
+        };
+
+        // Replace connect button temporarily
+        connectBtn.style.display = 'none';
+        connectBtn.parentNode.insertBefore(trustBtn, connectBtn);
+      }
+    }
+
+    // Run certificate check
+    checkCertificateTrust();
+
     // Enumerate cameras on page load
     enumerateCameras();
 
@@ -305,9 +552,6 @@
       });
       requestWakeLock();
     }
-
-    // Auto-connect on page load
-    updateStatus('Ready - Tap to start', 'status-connecting');
   </script>
 </body>
 </html>
