@@ -71,6 +71,94 @@ async function main() {
       prefix: '/static/',
     });
 
+    // Root redirect to welcome page
+    fastify.get('/', async (request, reply) => {
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI-OBS</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: white;
+      padding: 48px;
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 600px;
+    }
+    h1 {
+      font-size: 48px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 16px;
+    }
+    p {
+      color: #475569;
+      margin-bottom: 32px;
+      font-size: 18px;
+    }
+    .buttons {
+      display: flex;
+      gap: 16px;
+      flex-direction: column;
+    }
+    button {
+      padding: 16px 32px;
+      font-size: 16px;
+      font-weight: 700;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform 0.2s;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .primary {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+    .secondary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    button:hover {
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>AI-OBS</h1>
+    <p>Intelligent Auto-Director</p>
+    <div class="buttons">
+      <button class="primary" onclick="window.location.href='http://localhost:3101'">
+        📺 Open Dashboard
+      </button>
+      <button class="secondary" onclick="window.location.href='/camera?id=cam-1'">
+        📹 Connect Camera
+      </button>
+    </div>
+  </div>
+</body>
+</html>
+      `;
+      return reply.type('text/html').send(html);
+    });
+
     // Health check
     fastify.get('/health', async (request, reply) => {
       // If accessed from browser, show nice HTML page
@@ -193,11 +281,16 @@ async function main() {
 
       const jwt = await token.toJwt();
 
+      // Return LiveKit URL - use same host as API request for compatibility
+      // This works whether accessing from localhost or from phone on network
+      const requestHost = request.hostname.split(':')[0];
+      const livekitUrl = `ws://${requestHost}:7880`;
+
       const response: ApiResponse<{ token: string; url: string }> = {
         success: true,
         data: {
           token: jwt,
-          url: config.livekit.url,
+          url: livekitUrl,
         },
         timestamp: Date.now(),
       };
