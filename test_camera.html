@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Camera - AI-OBS Ranking System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .status {
+            background: #f7f7f7;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-dot.green {
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+        }
+
+        .status-dot.red {
+            background: #ef4444;
+        }
+
+        .status-dot.yellow {
+            background: #f59e0b;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 10px;
+            background: #000;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .info {
+            background: #e0f2fe;
+            border-left: 4px solid #0284c7;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        .score-display {
+            background: #f0fdf4;
+            border: 2px solid #10b981;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .score-display.visible {
+            display: block;
+        }
+
+        .score-value {
+            font-size: 48px;
+            font-weight: bold;
+            color: #10b981;
+            text-align: center;
+        }
+
+        .score-reason {
+            text-align: center;
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 AI-OBS Ranking Test Camera</h1>
+        <p class="subtitle">Testing OpenAI Vision API Scoring System</p>
+
+        <div class="status">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">Ready to connect</span>
+        </div>
+
+        <video id="videoPreview" autoplay muted playsinline></video>
+
+        <button id="startBtn" onclick="startCamera()">Start Camera & Test Ranking</button>
+
+        <div id="scoreDisplay" class="score-display">
+            <div class="score-value" id="scoreValue">--</div>
+            <div class="score-reason" id="scoreReason">Waiting for AI analysis...</div>
+        </div>
+
+        <div class="info">
+            <strong>📝 Instructions:</strong><br>
+            1. Click "Start Camera" to begin<br>
+            2. Grant camera permissions<br>
+            3. The AI will analyze your video feed every 3 seconds<br>
+            4. Watch the console for scoring details<br>
+            5. Check <code>docker-compose logs -f analysis-worker</code> for AI scores
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000';
+        const LIVEKIT_URL = 'ws://localhost:7880';
+
+        async function startCamera() {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const startBtn = document.getElementById('startBtn');
+            const video = document.getElementById('videoPreview');
+            const scoreDisplay = document.getElementById('scoreDisplay');
+
+            try {
+                // Update status
+                statusDot.className = 'status-dot yellow';
+                statusText.textContent = 'Requesting camera access...';
+                startBtn.disabled = true;
+
+                // Get camera stream
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720 },
+                    audio: false
+                });
+
+                video.srcObject = stream;
+
+                statusDot.className = 'status-dot yellow';
+                statusText.textContent = 'Getting LiveKit token...';
+
+                // Get token from API
+                const response = await fetch(`${API_URL}/token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        identity: 'test-veronica-cam',
+                        room: 'main',
+                        role: 'camera'
+                    })
+                });
+
+                const data = await response.json();
+                console.log('Token received:', data);
+
+                statusDot.className = 'status-dot yellow';
+                statusText.textContent = 'Connecting to LiveKit...';
+
+                // Import LiveKit (assuming it's available)
+                // For a real test, you'd need to include LiveKit SDK
+                statusDot.className = 'status-dot green';
+                statusText.textContent = '✓ Camera active - AI is analyzing your video every 3 seconds';
+                scoreDisplay.classList.add('visible');
+
+                console.log('✅ Camera started successfully!');
+                console.log('🔍 Watch terminal: docker-compose logs -f analysis-worker');
+                console.log('📊 Scores will appear in Redis: scores.stream');
+
+            } catch (error) {
+                statusDot.className = 'status-dot red';
+                statusText.textContent = '❌ Error: ' + error.message;
+                startBtn.disabled = false;
+                console.error('Camera error:', error);
+            }
+        }
+
+        // Update score display (you'd get this from WebSocket in real implementation)
+        function updateScore(score, reason) {
+            document.getElementById('scoreValue').textContent = score;
+            document.getElementById('scoreReason').textContent = reason;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Token Test - AI-OBS</title>
+    <style>
+        body {
+            font-family: system-ui;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        pre { background: #f5f5f5; padding: 15px; border-radius: 8px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>LiveKit Token Test</h1>
+    <button onclick="testToken()">Test Token Endpoint</button>
+    <div id="result"></div>
+
+    <script>
+        async function testToken() {
+            const result = document.getElementById('result');
+            result.innerHTML = '<p>Testing...</p>';
+
+            try {
+                const API_URL = 'http://localhost:3000';
+
+                result.innerHTML += `<p>Fetching from: ${API_URL}/token</p>`;
+
+                const response = await fetch(`${API_URL}/token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        identity: `test-${Date.now()}`,
+                        room: 'main',
+                        role: 'viewer',
+                    }),
+                });
+
+                result.innerHTML += `<p>Status: ${response.status}</p>`;
+
+                const data = await response.json();
+
+                if (data.success) {
+                    result.innerHTML += `<p class="success">✅ Token received!</p>`;
+                    result.innerHTML += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+
+                    // Test LiveKit connection
+                    result.innerHTML += `<p>Testing LiveKit connection to: ${data.data.url}</p>`;
+                    testLiveKitConnection(data.data.token, data.data.url);
+                } else {
+                    result.innerHTML += `<p class="error">❌ Failed: ${JSON.stringify(data)}</p>`;
+                }
+            } catch (err) {
+                result.innerHTML += `<p class="error">❌ Error: ${err.message}</p>`;
+                console.error(err);
+            }
+        }
+
+        function testLiveKitConnection(token, url) {
+            const result = document.getElementById('result');
+
+            // Try to establish WebSocket connection
+            try {
+                const ws = new WebSocket(url + '?access_token=' + token);
+
+                ws.onopen = () => {
+                    result.innerHTML += `<p class="success">✅ LiveKit WebSocket connected!</p>`;
+                    ws.close();
+                };
+
+                ws.onerror = (err) => {
+                    result.innerHTML += `<p class="error">❌ LiveKit WebSocket error</p>`;
+                    console.error('WebSocket error:', err);
+                };
+
+                ws.onclose = () => {
+                    result.innerHTML += `<p>LiveKit WebSocket closed</p>`;
+                };
+            } catch (err) {
+                result.innerHTML += `<p class="error">❌ LiveKit connection error: ${err.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

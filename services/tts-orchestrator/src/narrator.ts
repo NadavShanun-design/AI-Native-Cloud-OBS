@@ -180,7 +180,7 @@ export class PiperTTS {
   async healthCheck(): Promise<boolean> {
     try {
       const response = await fetch(`${this.piperUrl}/health`);
-      const data = (await response.json()) as { status: string; model_loaded: boolean };
+      const data = await response.json() as { status: string; model_loaded: boolean };
       this.logger.info({ piperHealth: data }, 'Piper TTS health check');
       return data.status === 'ok' && data.model_loaded;
     } catch (err) {

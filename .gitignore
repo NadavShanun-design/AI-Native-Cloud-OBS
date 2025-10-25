@@ -20,6 +20,9 @@ out/
 .env
 .env.local
 .env.*.local
+.env.backup
+.env.bak
+.env.bak2
 
 # IDE
 .vscode/

@@ -29,5 +29,5 @@ COPY . .
 # RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('base.en')"
 # Note: LLaVA (7GB) downloads on first run - too large to pre-cache
 
-# Use enhanced worker with local AI models (no OpenAI API needed!)
-CMD ["python3", "src/main_enhanced.py"]
+# Use OpenAI Vision API for fast camera analysis (works on CPU!)
+CMD ["python3", "src/main.py"]

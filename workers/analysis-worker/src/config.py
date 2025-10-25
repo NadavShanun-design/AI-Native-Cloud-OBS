@@ -1,5 +1,7 @@
 import os
+import socket
 from pydantic import BaseModel
+from loguru import logger
 
 
 class Config(BaseModel):
@@ -23,3 +25,6 @@ class Config(BaseModel):
 
 
 config = Config()
+
+# Log startup configuration
+logger.info(f"Analysis Worker starting - LiveKit: {config.livekit_url}, Redis: {config.redis_url}")

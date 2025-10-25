@@ -26,11 +26,11 @@ const fastify = Fastify({
 const redisSubscriber = createClient({ url: config.redis.url });
 const redisPublisher = createClient({ url: config.redis.url });
 
-// Initialize narration components
-const narrator = new NarrationGenerator(config.narration.maxWords, fastify.log);
+// Initialize narration components (cast logger to compatible interface)
+const narrator = new NarrationGenerator(config.narration.maxWords, fastify.log as any);
 const tts = new PiperTTS(
   config.piper.url,
-  fastify.log,
+  fastify.log as any,
   config.piper.speed
 );
 

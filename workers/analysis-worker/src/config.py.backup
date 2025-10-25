@@ -1,0 +1,55 @@
+import os
+import socket
+from pydantic import BaseModel
+from loguru import logger
+
+
+class Config(BaseModel):
+    # Redis
+    redis_url: str = os.getenv('REDIS_URL', 'redis://localhost:6379')
+
+    # LiveKit
+    livekit_url: str = os.getenv('LIVEKIT_URL', 'ws://localhost:7880')
+    livekit_api_key: str = os.getenv('LIVEKIT_API_KEY', 'devkey')
+    livekit_api_secret: str = os.getenv('LIVEKIT_API_SECRET', 'secret')
+
+    # OpenAI
+    openai_api_key: str = os.getenv('OPENAI_API_KEY', '')
+    openai_model: str = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+
+    # Frame sampling (analyze 1 frame every N seconds per camera)
+    frame_sample_interval: float = float(os.getenv('FRAME_SAMPLE_INTERVAL', '3.0'))
+
+    # Logging
+    log_level: str = os.getenv('LOG_LEVEL', 'INFO')
+
+
+config = Config()
+
+# Debug logging for network configuration
+logger.info("="*60)
+logger.info("NETWORK CONFIGURATION DEBUG")
+logger.info("="*60)
+logger.info(f"REDIS_URL: {config.redis_url}")
+logger.info(f"LIVEKIT_URL: {config.livekit_url}")
+logger.info(f"LIVEKIT_API_KEY: {config.livekit_api_key[:10]}...")
+logger.info(f"LOG_LEVEL: {config.log_level}")
+
+# Test DNS resolution
+try:
+    # Extract hostname from livekit_url
+    hostname = config.livekit_url.replace('ws://', '').replace('wss://', '').split(':')[0]
+    logger.info(f"Attempting to resolve hostname: {hostname}")
+    ip = socket.gethostbyname(hostname)
+    logger.info(f"✓ Resolved {hostname} -> {ip}")
+except Exception as e:
+    logger.error(f"✗ Failed to resolve {hostname}: {e}")
+    logger.info("Available network interfaces:")
+    try:
+        import subprocess
+        result = subprocess.run(['ip', 'addr'], capture_output=True, text=True)
+        logger.info(result.stdout[:500])
+    except:
+        pass
+
+logger.info("="*60)

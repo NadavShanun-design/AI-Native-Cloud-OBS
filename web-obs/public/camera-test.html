@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Camera Test - Simple getUserMedia</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    #video {
+      width: 100%;
+      max-width: 800px;
+      height: auto;
+      background: #1a1a1a;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+    }
+    #controls {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      width: 100%;
+      max-width: 800px;
+    }
+    button {
+      padding: 20px;
+      font-size: 18px;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    #startBtn {
+      background: #00ff00;
+      color: #000;
+    }
+    #startBtn:hover {
+      background: #00dd00;
+      transform: scale(1.02);
+    }
+    #stopBtn {
+      background: #ff0000;
+      color: #fff;
+      display: none;
+    }
+    #stopBtn:hover {
+      background: #dd0000;
+    }
+    #status {
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 14px;
+    }
+    .status-info { background: #333; color: #fff; }
+    .status-success { background: #00ff00; color: #000; }
+    .status-error { background: #ff0000; color: #fff; }
+    .status-warning { background: #ffa500; color: #000; }
+    #details {
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .detail-line {
+      margin: 5px 0;
+      color: #888;
+    }
+    .detail-line.success { color: #00ff00; }
+    .detail-line.error { color: #ff0000; }
+    .detail-line.info { color: #ffa500; }
+  </style>
+</head>
+<body>
+  <h1 style="margin-bottom: 20px; font-size: 24px;">🎥 Simple Camera Test</h1>
+
+  <video id="video" autoplay playsinline muted webkit-playsinline></video>
+
+  <div id="controls">
+    <div id="status" class="status-info">Ready to test camera access</div>
+
+    <button id="startBtn">Start Camera</button>
+    <button id="stopBtn">Stop Camera</button>
+
+    <div id="details"></div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const status = document.getElementById('status');
+    const details = document.getElementById('details');
+
+    let stream = null;
+
+    function log(message, type = 'info') {
+      console.log(message);
+      const line = document.createElement('div');
+      line.className = `detail-line ${type}`;
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      details.appendChild(line);
+      details.scrollTop = details.scrollHeight;
+    }
+
+    function updateStatus(message, className) {
+      status.textContent = message;
+      status.className = `status-${className}`;
+    }
+
+    // Check browser support
+    log('🔍 Checking browser support...', 'info');
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      log('❌ getUserMedia is not supported in this browser', 'error');
+      updateStatus('Error: Browser does not support camera access', 'error');
+    } else {
+      log('✅ getUserMedia is supported', 'success');
+    }
+
+    // Check if we're on HTTPS or localhost
+    const isSecure = window.location.protocol === 'https:' ||
+                     window.location.hostname === 'localhost' ||
+                     window.location.hostname === '127.0.0.1';
+
+    if (isSecure) {
+      log('✅ Secure context detected', 'success');
+    } else {
+      log('⚠️ WARNING: Not a secure context (not HTTPS/localhost)', 'error');
+      log('Safari requires HTTPS or Web Inspector exception', 'info');
+      updateStatus('⚠️ Not secure context - Safari may block camera', 'warning');
+    }
+
+    log(`📍 Location: ${window.location.href}`, 'info');
+    log(`🌐 Protocol: ${window.location.protocol}`, 'info');
+    log(`💻 User Agent: ${navigator.userAgent.substring(0, 50)}...`, 'info');
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        log('🎥 Requesting camera access...', 'info');
+        updateStatus('Requesting camera permission...', 'warning');
+
+        // Request camera with simple constraints
+        const constraints = {
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'environment' // Back camera on mobile
+          },
+          audio: true
+        };
+
+        log(`📋 Constraints: ${JSON.stringify(constraints)}`, 'info');
+
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        log('✅ Camera access granted!', 'success');
+
+        // Log stream details
+        const videoTracks = stream.getVideoTracks();
+        const audioTracks = stream.getAudioTracks();
+
+        log(`📹 Video tracks: ${videoTracks.length}`, 'success');
+        videoTracks.forEach((track, i) => {
+          log(`  Track ${i}: ${track.label} (${track.kind})`, 'info');
+          const settings = track.getSettings();
+          log(`    Resolution: ${settings.width}x${settings.height}`, 'info');
+          log(`    Frame rate: ${settings.frameRate} fps`, 'info');
+        });
+
+        log(`🎤 Audio tracks: ${audioTracks.length}`, 'success');
+        audioTracks.forEach((track, i) => {
+          log(`  Track ${i}: ${track.label} (${track.kind})`, 'info');
+        });
+
+        // Attach stream to video element
+        video.srcObject = stream;
+
+        log('✅ Stream attached to video element', 'success');
+        updateStatus('✅ Camera is working! Stream active.', 'success');
+
+        // Show stop button
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'block';
+
+        // Wait for video to start playing
+        video.onloadedmetadata = () => {
+          log('✅ Video metadata loaded', 'success');
+          video.play().then(() => {
+            log('✅ Video playing', 'success');
+          }).catch(e => {
+            log(`⚠️ Video play error: ${e.message}`, 'error');
+          });
+        };
+
+      } catch (error) {
+        log(`❌ Error: ${error.name}`, 'error');
+        log(`   Message: ${error.message}`, 'error');
+
+        let userMessage = '';
+
+        switch(error.name) {
+          case 'NotAllowedError':
+            userMessage = 'Camera permission denied. Please allow camera access.';
+            log('💡 Tip: Check browser permissions and System Settings', 'info');
+            break;
+          case 'NotFoundError':
+            userMessage = 'No camera found. Please connect a camera.';
+            break;
+          case 'NotReadableError':
+            userMessage = 'Camera is already in use by another app.';
+            break;
+          case 'OverconstrainedError':
+            userMessage = 'Camera does not support requested constraints.';
+            break;
+          case 'SecurityError':
+            userMessage = 'Camera access blocked due to security (need HTTPS on Safari).';
+            log('💡 Safari Fix: Open Web Inspector → Enable "Allow Media Capture on Insecure Sites"', 'info');
+            break;
+          default:
+            userMessage = `Camera error: ${error.message}`;
+        }
+
+        updateStatus(`❌ ${userMessage}`, 'error');
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      if (stream) {
+        log('🛑 Stopping camera...', 'info');
+
+        stream.getTracks().forEach(track => {
+          track.stop();
+          log(`  Stopped: ${track.label}`, 'info');
+        });
+
+        video.srcObject = null;
+        stream = null;
+
+        log('✅ Camera stopped', 'success');
+        updateStatus('Camera stopped', 'info');
+
+        startBtn.style.display = 'block';
+        stopBtn.style.display = 'none';
+      }
+    });
+
+    // List available cameras
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      navigator.mediaDevices.enumerateDevices()
+        .then(devices => {
+          const cameras = devices.filter(d => d.kind === 'videoinput');
+          log(`📷 Found ${cameras.length} camera(s)`, 'success');
+          cameras.forEach((camera, i) => {
+            log(`  ${i + 1}. ${camera.label || `Camera ${i + 1}`}`, 'info');
+          });
+        })
+        .catch(e => {
+          log(`⚠️ Could not enumerate devices: ${e.message}`, 'error');
+        });
+    }
+  </script>
+</body>
+</html>

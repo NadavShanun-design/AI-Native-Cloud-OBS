@@ -108,8 +108,14 @@ class AnalysisWorker:
         """Process incoming video track - just store the latest frame."""
         logger.info(f"Processing video track for camera: {cam_id}")
 
-        async for frame in track:
+        # Create a video stream from the track
+        video_stream = rtc.VideoStream(track)
+
+        async for event in video_stream:
             try:
+                # Get the frame from the event
+                frame = event.frame
+
                 # Convert frame to numpy array
                 img = self._frame_to_numpy(frame)
 
@@ -123,18 +129,55 @@ class AnalysisWorker:
         """Convert LiveKit VideoFrame to numpy array using PyAV."""
         import av
 
-        # Create PyAV VideoFrame from buffer
-        av_frame = av.VideoFrame(frame.width, frame.height, 'yuv420p')
+        try:
+            # For I420/YUV420 format, manually extract Y, U, V planes
+            width = frame.width
+            height = frame.height
 
-        # Copy plane data
-        for i, plane in enumerate(frame.data.planes):
-            av_frame.planes[i].update(bytes(plane))
+            # Validate dimensions
+            if width <= 0 or height <= 0:
+                raise ValueError(f"Invalid frame dimensions: {width}x{height}")
 
-        # Convert to RGB and get numpy array
-        rgb_frame = av_frame.to_rgb()
-        img = rgb_frame.to_ndarray()
+            # Create PyAV VideoFrame
+            av_frame = av.VideoFrame(width, height, 'yuv420p')
 
-        return img
+            # Get the raw buffer as bytes
+            buffer = bytes(frame.data)
+
+            # I420 format layout:
+            # Y plane: width * height bytes
+            # U plane: (width/2) * (height/2) bytes
+            # V plane: (width/2) * (height/2) bytes
+            y_size = width * height
+            uv_size = (width // 2) * (height // 2)
+            expected_size = y_size + 2 * uv_size
+
+            # Validate buffer size
+            if len(buffer) < expected_size:
+                logger.warning(f"Frame buffer too small: got {len(buffer)} bytes, need {expected_size} bytes for {width}x{height}")
+                # Return a black frame instead of crashing
+                return np.zeros((height, width, 3), dtype=np.uint8)
+
+            # Extract planes from buffer
+            y_plane = buffer[0:y_size]
+            u_plane = buffer[y_size:y_size + uv_size]
+            v_plane = buffer[y_size + uv_size:y_size + 2*uv_size]
+
+            # Update PyAV frame planes
+            av_frame.planes[0].update(y_plane)
+            av_frame.planes[1].update(u_plane)
+            av_frame.planes[2].update(v_plane)
+
+            # Convert to RGB and get numpy array
+            rgb_frame = av_frame.to_rgb()
+            img = rgb_frame.to_ndarray()
+
+            return img
+
+        except Exception as e:
+            logger.error(f"Error converting frame to numpy: {e}")
+            # Return a black frame as fallback
+            return np.zeros((480, 640, 3), dtype=np.uint8)
 
     def _numpy_to_base64_jpeg(self, img: np.ndarray, quality: int = 85) -> str:
         """Convert numpy array to base64-encoded JPEG string."""
@@ -207,6 +250,12 @@ Respond ONLY with valid JSON in this exact format:
 
             # Parse response
             result_text = response.choices[0].message.content.strip()
+
+            # Handle markdown code blocks (OpenAI sometimes returns ```json ... ```)
+            if result_text.startswith("```"):
+                lines = result_text.split("\n")
+                json_lines = [l for l in lines if not l.startswith("```")]
+                result_text = "\n".join(json_lines).strip()
 
             # Try to parse as JSON
             try:
