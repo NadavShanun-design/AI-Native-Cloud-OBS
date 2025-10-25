@@ -23,6 +23,21 @@ out/
 .env.backup
 .env.bak
 .env.bak2
+.env.*
+
+# Private keys and certificates
+*.pem
+*.key
+*.crt
+*.cert
+certs/
+*.p12
+*.pfx
+
+# API keys and secrets
+*secret*
+*apikey*
+credentials.json
 
 # IDE
 .vscode/
