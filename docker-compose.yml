@@ -10,18 +10,18 @@ services:
       - redis-data:/data
     command: redis-server --appendonly yes
 
-  # LiveKit Server (WebRTC SFU)
-  livekit-server:
-    image: livekit/livekit-server:v1.5.2
-    command: --config /etc/livekit.yaml
-    ports:
-      - "7880:7880"
-      - "7881:7881"
-    volumes:
-      - ./livekit.yaml:/etc/livekit.yaml
-    networks:
-      - default
-    restart: unless-stopped
+  # LiveKit Server (WebRTC SFU) - DISABLED (using LiveKit Cloud)
+  # livekit-server:
+  #   image: livekit/livekit-server:v1.5.2
+  #   command: --config /etc/livekit.yaml
+  #   ports:
+  #     - "7880:7880"
+  #     - "7881:7881"
+  #   volumes:
+  #     - ./livekit.yaml:/etc/livekit.yaml
+  #   networks:
+  #     - default
+  #   restart: unless-stopped
 
   # Analysis Worker (Python: OpenAI Vision API - no GPU needed!)
   # Fast camera analysis using GPT-4 Vision (works on any Mac/Linux!)
@@ -31,7 +31,7 @@ services:
       dockerfile: Dockerfile
     environment:
       - REDIS_URL=redis://redis:6379
-      - LIVEKIT_URL=ws://livekit-server:7880
+      - LIVEKIT_URL=${LIVEKIT_URL}
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
       # OpenAI API config (required for camera analysis)
@@ -44,7 +44,6 @@ services:
       - model-cache:/root/.cache
     depends_on:
       - redis
-      - livekit-server
     restart: unless-stopped
 
   # Decision Service (Node.js/TypeScript)
@@ -75,11 +74,8 @@ services:
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
       - PORT=3000
       - USE_HTTPS=false
-      - KEY_PATH=/app/certs/192.168.68.54+localhost-key.pem
     ports:
       - "3000:3000"
-    volumes:
-      - ./certs:/app/certs:ro
     depends_on:
       - redis
       - decision-service
@@ -89,11 +85,14 @@ services:
     build:
       context: .
       dockerfile: web-obs/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3000
+        NEXT_PUBLIC_LIVEKIT_URL: wss://buildathon-bo96a3yr.livekit.cloud
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:3000
-      - NEXT_PUBLIC_LIVEKIT_URL=ws://localhost:7880
+      - NEXT_PUBLIC_LIVEKIT_URL=wss://buildathon-bo96a3yr.livekit.cloud
     ports:
-      - "3101:3000"
+      - "3002:3000"
     depends_on:
       - api-gateway
 

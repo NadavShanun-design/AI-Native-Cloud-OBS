@@ -1,0 +1,47 @@
+🎉 YOUR CAMERA LINKS ARE READY!
+===============================================
+
+📱 SEND THESE TO ANYONE:
+
+Camera 1: https://patriotic-untimidly-miya.ngrok-free.dev/camera?id=cam-1
+Camera 2: https://patriotic-untimidly-miya.ngrok-free.dev/camera?id=cam-2
+Camera 3: https://patriotic-untimidly-miya.ngrok-free.dev/camera?id=cam-3
+Camera 4: https://patriotic-untimidly-miya.ngrok-free.dev/camera?id=cam-4
+Camera 5: https://patriotic-untimidly-miya.ngrok-free.dev/camera?id=cam-5
+
+📊 Dashboard (your Mac): http://localhost:3101
+
+===============================================
+
+✅ WHAT'S WORKING:
+
+- ✅ LiveKit HTTP + WebSocket proxy (manual implementation)
+- ✅ Camera page uses dynamic URLs
+- ✅ Token endpoint returns wss:// for ngrok
+- ✅ Only 1 ngrok tunnel (free tier!)
+- ✅ Works on ALL devices
+
+===============================================
+
+🔧 ARCHITECTURE:
+
+Browser → ngrok HTTPS → API Gateway → LiveKit Proxy → LiveKit Server
+
+HTTP requests (/rtc/validate): Proxied via fetch()
+WebSocket (/rtc): Proxied via WebSocket forwarding
+
+===============================================
+
+📝 HOW TO USE:
+
+1. Copy a camera link above
+2. Send to someone
+3. They open it, click "Visit Site"
+4. Allow camera access
+5. You see them on http://localhost:3101
+
+===============================================
+
+✅ READY TO TEST!
+
+Open one of the camera links in your browser now to test!

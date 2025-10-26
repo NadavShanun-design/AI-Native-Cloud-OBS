@@ -30,10 +30,15 @@ export default function CameraPreview({ camera, rank }: CameraPreviewProps) {
   const rankBadge = getRankBadge();
 
   useEffect(() => {
-    if (!videoRef.current || !camera.participant) return;
+    if (!videoRef.current || !camera.participant) {
+      console.log(`⚠️ ${camera.id}: Missing videoRef or participant`);
+      return;
+    }
 
     const participant = camera.participant;
     const videoElement = videoRef.current;
+
+    console.log(`🎬 ${camera.id}: Setting up video track subscription`);
 
     // Function to attach video track
     const attachVideoTrack = () => {
@@ -41,7 +46,10 @@ export default function CameraPreview({ camera, rank }: CameraPreviewProps) {
 
       if (videoPublication?.track) {
         const videoTrack = videoPublication.track as RemoteVideoTrack;
+        console.log(`✅ ${camera.id}: Attaching video track`, videoTrack);
         videoTrack.attach(videoElement);
+      } else {
+        console.log(`⏳ ${camera.id}: Video track not yet available`);
       }
     };
 
@@ -51,6 +59,7 @@ export default function CameraPreview({ camera, rank }: CameraPreviewProps) {
 
       if (videoPublication?.track) {
         const videoTrack = videoPublication.track as RemoteVideoTrack;
+        console.log(`🔌 ${camera.id}: Detaching video track`);
         videoTrack.detach(videoElement);
       }
     };
@@ -59,13 +68,20 @@ export default function CameraPreview({ camera, rank }: CameraPreviewProps) {
     attachVideoTrack();
 
     // Listen for track subscribed event (in case track arrives later)
-    participant.on('trackSubscribed', attachVideoTrack);
+    participant.on('trackSubscribed', (track) => {
+      console.log(`📺 ${camera.id}: Track subscribed event`, track.kind);
+      attachVideoTrack();
+    });
+
+    participant.on('trackUnsubscribed', (track) => {
+      console.log(`🚫 ${camera.id}: Track unsubscribed event`, track.kind);
+    });
 
     return () => {
       participant.off('trackSubscribed', attachVideoTrack);
       detachVideoTrack();
     };
-  }, [camera.participant]);
+  }, [camera.participant, camera.id]);
 
   const handleClick = () => {
     if (manualMode) {

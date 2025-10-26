@@ -30,6 +30,8 @@
       font-weight: 600;
       z-index: 10;
       backdrop-filter: blur(10px);
+      max-width: 90%;
+      text-align: center;
     }
     #camId {
       position: fixed;
@@ -52,13 +54,15 @@
 </head>
 <body>
   <video id="video" autoplay playsinline muted></video>
-  <div id="status">Starting...</div>
+  <div id="status">Loading...</div>
   <div id="camId"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const cameraId = urlParams.get('id') || 'cam-' + Math.floor(Math.random() * 5 + 1);
+    // Always use the API Gateway URL (port 3000), not the current page origin
+    // Use current page origin so it works both locally and through ngrok
     const apiUrl = window.location.origin;
 
     const video = document.getElementById('video');
@@ -71,8 +75,18 @@
 
     async function start() {
       try {
+        // Check if getUserMedia is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Camera API not available. Please use HTTPS or localhost in a modern browser.');
+        }
+
+        console.log('✅ navigator.mediaDevices available');
+        console.log('✅ LiveKit client loaded:', typeof LivekitClient !== 'undefined');
+
         // 1. Get camera FIRST (instant preview)
-        status.textContent = 'Starting camera...';
+        status.textContent = 'Requesting camera access...';
+        console.log('🎥 Requesting camera access...');
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             width: { ideal: 1280 },
@@ -82,11 +96,14 @@
           audio: true
         });
 
+        console.log('✅ Camera access granted');
+
         // Show local preview immediately
         video.srcObject = stream;
-        status.textContent = 'Camera ready, connecting...';
+        status.textContent = 'Camera ready, connecting to LiveKit...';
 
         // 2. Get LiveKit token
+        console.log('🔑 Fetching LiveKit token...');
         const tokenRes = await fetch(`${apiUrl}/token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -98,21 +115,28 @@
         });
 
         const tokenData = await tokenRes.json();
-        if (!tokenData.success) throw new Error('Failed to get token');
+        if (!tokenData.success) {
+          throw new Error('Failed to get token: ' + JSON.stringify(tokenData));
+        }
 
         const { token, url } = tokenData.data;
+        console.log('✅ Token received, LiveKit URL:', url);
 
         // 3. Connect to LiveKit
         status.textContent = 'Connecting to LiveKit...';
+        console.log('🔌 Connecting to LiveKit:', url);
+
         room = new LivekitClient.Room({
           adaptiveStream: true,
           dynacast: true
         });
 
         await room.connect(url, token);
+        console.log('✅ Connected to LiveKit room');
 
         // 4. Publish our camera feed
-        status.textContent = 'Publishing feed...';
+        status.textContent = 'Publishing video feed...';
+        console.log('📡 Publishing tracks...');
 
         // Get tracks from our stream
         const videoTrack = stream.getVideoTracks()[0];
@@ -129,6 +153,8 @@
 
         await room.localParticipant.publishTrack(audioTrack);
 
+        console.log('✅ Tracks published successfully');
+
         // Done!
         status.textContent = '🔴 LIVE';
         status.className = 'connected';
@@ -139,10 +165,23 @@
         console.error('❌ Error:', error);
         status.textContent = `Error: ${error.message}`;
         status.className = 'error';
+
+        // Show detailed debug info
+        console.log('🐛 Debug info:');
+        console.log('  - navigator.mediaDevices:', typeof navigator.mediaDevices);
+        console.log('  - getUserMedia:', typeof navigator.mediaDevices?.getUserMedia);
+        console.log('  - LivekitClient:', typeof LivekitClient);
+        console.log('  - URL:', window.location.href);
+        console.log('  - Protocol:', window.location.protocol);
       }
     }
 
     // AUTO-START when page loads
+    console.log('🚀 Camera page loaded');
+    console.log('  - Camera ID:', cameraId);
+    console.log('  - API URL:', apiUrl);
+    console.log('  - Page URL:', window.location.href);
+
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', start);
     } else {
@@ -151,7 +190,9 @@
 
     // Keep screen awake
     if ('wakeLock' in navigator) {
-      navigator.wakeLock.request('screen').catch(() => {});
+      navigator.wakeLock.request('screen').catch(() => {
+        console.log('⚠️ Wake lock not available');
+      });
     }
   </script>
 </body>

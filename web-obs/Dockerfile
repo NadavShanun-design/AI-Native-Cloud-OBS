@@ -22,6 +22,14 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Accept build arguments for Next.js environment variables
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_LIVEKIT_URL
+
+# Set them as environment variables for the build
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_LIVEKIT_URL=$NEXT_PUBLIC_LIVEKIT_URL
+
 # Copy node_modules from deps
 COPY --from=deps /app/node_modules ./node_modules
 

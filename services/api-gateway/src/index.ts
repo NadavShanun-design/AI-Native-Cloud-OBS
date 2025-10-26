@@ -281,16 +281,12 @@ async function main() {
 
       const jwt = await token.toJwt();
 
-      // Return LiveKit URL - use same host as API request for compatibility
-      // This works whether accessing from localhost or from phone on network
-      const requestHost = request.hostname.split(':')[0];
-      const livekitUrl = `ws://${requestHost}:7880`;
-
+      // Return LiveKit Cloud URL directly (no proxy needed)
       const response: ApiResponse<{ token: string; url: string }> = {
         success: true,
         data: {
           token: jwt,
-          url: livekitUrl,
+          url: config.livekit.url, // LiveKit Cloud URL from .env
         },
         timestamp: Date.now(),
       };
@@ -416,6 +412,9 @@ async function main() {
         fastify.log.error({ err }, 'WebSocket error');
       });
     });
+
+    // No LiveKit proxy needed - using LiveKit Cloud directly
+    fastify.log.info('✅ Using LiveKit Cloud directly (no proxy needed)');
 
     // Start server
     await fastify.listen({

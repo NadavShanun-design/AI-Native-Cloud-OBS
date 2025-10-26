@@ -1,91 +1,79 @@
-# Certificate Setup for Safari
+# 📱 Certificate Trust Setup for Camera Access
 
-## The Problem
-Safari blocks HTTPS requests to websites with untrusted SSL certificates. This prevents the camera page and dashboard from connecting to the API.
+## Why You Need This
 
-## The Solution
-You need to trust the SSL certificate in Safari **before** opening the camera page or dashboard.
+Modern browsers **require HTTPS** to access cameras/microphones from any device that isn't `localhost`. Since we're using a self-signed certificate for local development, you need to **trust the certificate** on each device.
 
-## Step-by-Step Instructions
+---
 
-### 1. Trust the Certificate in Safari
+## 🖥️ **Mac/Desktop (This Computer)**
 
-1. **Open Safari** (not Chrome or any other browser)
+### **Chrome/Brave/Edge**
+1. When you see the warning "Your connection is not private"
+2. Click **"Advanced"**
+3. Click **"Proceed to 10.237.213.101 (unsafe)"**
+4. ✅ Done! The certificate is now trusted for this session
 
-2. **Visit this URL:**
-   ```
-   https://localhost:3000/health
-   ```
+### **Safari (Better for Mac)**
+1. Go to `https://10.237.213.101:3000/health`
+2. Click **"Show Details"** → **"Visit this website"**
+3. Click **"Visit Website"** again
+4. ✅ Done!
 
-3. **You'll see a warning** like "This Connection Is Not Private" or "Safari can't verify the identity of the website"
+---
 
-4. **Click "Show Details"** (or "Advanced")
+## 📱 **iPhone/iPad**
 
-5. **Click "visit this website"** or **"Proceed to localhost (unsafe)"**
+### **Step 1: Accept Certificate in Safari**
+1. Open Safari on your iPhone
+2. Go to: `https://10.237.213.101:3000/health`
+3. You'll see a warning - tap **"Show Details"**
+4. Tap **"visit this website"**
+5. Tap **"Visit Website"** again to confirm
+6. ✅ You should see: {"status":"ok",...}
 
-6. **You should see:**
-   ```json
-   {"status":"ok","timestamp":...}
-   ```
+### **Step 2: Now Test Camera**
+1. In Safari, go to: `https://10.237.213.101:3000/camera?id=cam-1`
+2. Tap **"Allow"** when asked for camera access
+3. ✅ You should see yourself and "🔴 LIVE"!
 
-7. **That's it!** The certificate is now trusted for this session.
+**Note:** Use Safari on iOS. Chrome may not work with self-signed certificates.
 
-### 2. Open the Camera Page
+---
 
-Now you can open the camera page:
+## 🤖 **Android Phone/Tablet**
+
+1. Open Chrome
+2. Go to: `https://10.237.213.101:3000/health`
+3. Tap **"Advanced"** → **"Proceed to 10.237.213.101 (unsafe)"**
+4. Now go to: `https://10.237.213.101:3000/camera?id=cam-1`
+5. Tap **"Allow"** for camera
+6. ✅ Should work!
+
+---
+
+## 🌐 **All URLs Are Now HTTPS**
+
+### **Dashboard:**
 ```
-https://localhost:3000/camera?id=cam-1
-```
-
-OR use the IP address (works from any device on the same network):
-```
-https://192.168.68.54:3000/camera?id=cam-1
-```
-
-### 3. Open the Dashboard
-
-Open the main dashboard:
-```
-http://localhost:3101
-```
-
-## What Changed?
-
-I generated a new SSL certificate that works for **both**:
-- `localhost` (for local development)
-- `192.168.68.54` (your current IP address on the network)
-
-This means you can access the camera page from:
-- Your laptop using `https://localhost:3000/camera?id=cam-1`
-- Your phone/tablet using `https://192.168.68.54:3000/camera?id=cam-1`
-
-## Troubleshooting
-
-### Safari still shows "Can't Open the Page"
-- Make sure you visited `https://localhost:3000/health` FIRST
-- Make sure you clicked "visit this website" to accept the certificate
-- Try refreshing the camera page
-
-### Camera says "Error: could not establish signal connection"
-- Make sure you trusted the certificate first
-- Open the browser console (Safari → Develop → Show JavaScript Console)
-- Look for any error messages starting with ❌
-- Make sure you allowed camera and microphone permissions
-
-### Dashboard stuck on "Connecting to LiveKit..."
-- Make sure you visited `https://192.168.68.54:3000/health` in Safari first
-- Accept the certificate
-- Then refresh the dashboard at `http://localhost:3101`
-
-## Quick Test
-
-Run this in Terminal to verify everything is working:
-```bash
-curl -k https://localhost:3000/health
-curl -k https://192.168.68.54:3000/health
+https://10.237.213.101:3101
 ```
 
-Both should return:
-```json
-{"status":"ok","timestamp":...}
+### **Camera Page:**
 ```
+https://10.237.213.101:3000/camera?id=cam-1
+```
+
+### **QR Code Page:**
+```
+https://10.237.213.101:3101/cameras
+```
+
+---
+
+## 🔐 **Security Note**
+
+This is a **self-signed certificate** - completely safe for local network use!
+- ✅ Traffic is encrypted
+- ✅ Standard for local development
+- ❌ Don't use on public internet

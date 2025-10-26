@@ -4,22 +4,10 @@ import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
 export default function CamerasPage() {
-  const [localIP, setLocalIP] = useState<string>('');
   const [copied, setCopied] = useState<number | null>(null);
 
-  useEffect(() => {
-    // Get local IP and protocol from window location
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || `${protocol}//${hostname}:3000`;
-    // Extract hostname and port from API URL
-    const match = apiUrl.match(/^https?:\/\/([^:/]+)(?::(\d+))?/);
-    if (match) {
-      const host = match[1];
-      const port = match[2] || (apiUrl.startsWith('https') ? '443' : '3000');
-      setLocalIP(`${host}:${port}`);
-    }
-  }, []);
+  // Use ngrok URL for camera connections (HTTPS required for camera access)
+  const NGROK_URL = 'https://patriotic-untimidly-miya.ngrok-free.dev';
 
   const cameras = [
     { id: 'cam-1', name: 'Camera 1', gradient: 'from-violet-500 to-purple-600', icon: '📹' },
@@ -30,9 +18,7 @@ export default function CamerasPage() {
   ];
 
   const getCameraUrl = (camId: string) => {
-    // Use current page protocol if available (client-side), default to https
-    const protocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
-    return `${protocol}//${localIP}/camera?id=${camId}`;
+    return `${NGROK_URL}/camera?id=${camId}`;
   };
 
   const copyToClipboard = (url: string, index: number) => {

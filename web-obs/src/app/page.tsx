@@ -15,6 +15,7 @@ const LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL || 'ws://localhost:7880'
 export default function Home() {
   const [token, setToken] = useState<string>('');
   const [connected, setConnected] = useState(false);
+  const { updateScore, setCurrentProgram, setLastSwitch, setWsConnected } = useAppStore();
 
   useEffect(() => {
     // Get LiveKit token
@@ -34,7 +35,93 @@ export default function Home() {
         }
       })
       .catch((err) => console.error('Failed to get token:', err));
-  }, []);
+
+    // Connect to WebSocket for real-time score updates
+    const wsUrl = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+    const ws = new WebSocket(`${wsUrl}/ws`);
+
+    ws.onopen = () => {
+      console.log('✅ WebSocket connected for real-time updates');
+      setWsConnected(true);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        console.log('📨 WebSocket message:', message);
+
+        switch (message.type) {
+          case 'score':
+            // Update camera score
+            if (message.payload?.payload) {
+              const scoreData = message.payload.payload;
+              updateScore({
+                camId: scoreData.cam_id,
+                score: scoreData.score,
+                reason: scoreData.reason,
+                timestamp: scoreData.timestamp,
+                features: scoreData.features || {
+                  camId: scoreData.cam_id,
+                  timestamp: scoreData.timestamp,
+                  objectCounts: {},
+                  faceConfMax: 0,
+                  faceArea: 0,
+                  bboxOccupancy: 0,
+                  motionScore: 0,
+                  speechEnergyDb: 0,
+                  keywords: [],
+                  vlmTags: [],
+                  faceSalience: 0,
+                  mainSubjectOverlap: 0,
+                  motionSalience: 0,
+                  speechEnergy: 0,
+                  keywordBoost: 0,
+                  framingScore: 0,
+                  noveltyDecay: 0,
+                  continuityBonus: 0,
+                },
+              });
+            }
+            break;
+
+          case 'switch':
+            // Update current program camera
+            if (message.payload?.to) {
+              setCurrentProgram(message.payload.to);
+              setLastSwitch(message.payload);
+            }
+            break;
+
+          case 'status':
+            // Handle status updates
+            console.log('Status update:', message.payload);
+            break;
+
+          case 'narration':
+            // Handle narration updates
+            console.log('Narration:', message.payload);
+            break;
+        }
+      } catch (err) {
+        console.error('Error parsing WebSocket message:', err);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('❌ WebSocket error:', error);
+      setWsConnected(false);
+    };
+
+    ws.onclose = () => {
+      console.log('🔌 WebSocket disconnected');
+      setWsConnected(false);
+    };
+
+    // Cleanup on unmount
+    return () => {
+      ws.close();
+    };
+  }, [updateScore, setCurrentProgram, setLastSwitch, setWsConnected]);
 
   if (!token) {
     return (

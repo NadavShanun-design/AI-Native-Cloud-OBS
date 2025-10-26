@@ -1,5 +1,5 @@
 # ===== STAGE 1: Dependencies =====
-FROM node:18-alpine AS deps
+FROM node:20-alpine AS deps
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ WORKDIR /app/shared/types
 RUN npm run build
 
 # ===== STAGE 2: Builder =====
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -46,7 +46,7 @@ WORKDIR /app/services/api-gateway
 RUN npm run build
 
 # ===== STAGE 3: Runner =====
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 

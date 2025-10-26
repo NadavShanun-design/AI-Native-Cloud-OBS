@@ -1,0 +1,50 @@
+=================================================================
+🎥 AI-OBS Camera Connection Links
+=================================================================
+
+📱 FOR PHONES/LAPTOPS ON THE SAME WI-FI NETWORK:
+-----------------------------------------------------------------
+
+Camera 1: http://10.237.213.101:3000/camera?id=cam-1
+Camera 2: http://10.237.213.101:3000/camera?id=cam-2
+Camera 3: http://10.237.213.101:3000/camera?id=cam-3
+Camera 4: http://10.237.213.101:3000/camera?id=cam-4
+Camera 5: http://10.237.213.101:3000/camera?id=cam-5
+
+
+📺 DASHBOARD (on this computer):
+-----------------------------------------------------------------
+
+Dashboard: http://localhost:3002
+
+
+🌐 HOW IT WORKS:
+-----------------------------------------------------------------
+
+1. Open a camera link on your phone/laptop (must be on same WiFi)
+2. Grant camera/microphone permissions when prompted
+3. Camera will connect to LiveKit Cloud and start streaming
+4. Dashboard will automatically show the camera feed
+5. AI will analyze the feed and display scores in real-time
+
+
+🔧 TROUBLESHOOTING:
+-----------------------------------------------------------------
+
+- Make sure all devices are on the same WiFi network
+- If camera access is denied, use HTTP (not HTTPS) or localhost
+- Video streams through LiveKit Cloud (internet required)
+- Scores update every 3 seconds via OpenAI Vision API
+
+
+✅ ALL SERVICES RUNNING:
+-----------------------------------------------------------------
+
+✓ Redis (cache/pubsub)
+✓ API Gateway (http://10.237.213.101:3000)
+✓ Analysis Worker (AI scoring with OpenAI)
+✓ Decision Service (camera switching logic)
+✓ Dashboard (http://localhost:3002)
+✓ LiveKit Cloud (video streaming)
+
+=================================================================
