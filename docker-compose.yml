@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # Redis for pub/sub messaging
+  redis:
+    image: redis:7-alpine
+    container_name: cloud-obs-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - cloud-obs-network
+
+  # LiveKit server for WebRTC
+  livekit-server:
+    image: livekit/livekit-server:latest
+    container_name: cloud-obs-livekit
+    command: --config /etc/livekit.yaml --dev
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50020:50000-50020/udp"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml
+    environment:
+      LIVEKIT_KEYS: "devkey: secret"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - cloud-obs-network
+
+  # Analysis Worker - AI video scoring
+  analysis-worker:
+    build:
+      context: ./services/analysis-worker
+      dockerfile: Dockerfile
+    container_name: cloud-obs-analysis-worker
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Allow container to reach host network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - cloud-obs-network
+
+  # API Gateway - REST API + WebSocket
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: cloud-obs-api-gateway
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - PORT=3000
+      - HOST=0.0.0.0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - cloud-obs-network
+
+  # go2rtc - RTSP to WebRTC proxy for IP cameras
+  go2rtc:
+    image: alexxit/go2rtc:latest
+    container_name: cloud-obs-go2rtc
+    ports:
+      - "1984:1984"  # Web UI and API
+      - "8554:8554"  # RTSP server
+    volumes:
+      - ./go2rtc.yaml:/config/go2rtc.yaml
+    restart: unless-stopped
+    networks:
+      - cloud-obs-network
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  cloud-obs-network:
+    driver: bridge

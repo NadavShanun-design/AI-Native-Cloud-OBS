@@ -1,0 +1,43 @@
+port: 7880
+bind_addresses:
+  - 0.0.0.0
+
+rtc:
+  # UDP ports for WebRTC media (limited range for Docker)
+  port_range_start: 50000
+  port_range_end: 50020
+  # For local Docker development
+  use_external_ip: false
+  # Allow communication on local network
+  tcp_port: 7881
+  # Use mDNS for local discovery
+  use_ice_lite: false
+
+# Redis for room state and coordination
+redis:
+  address: redis:6379
+
+# API keys for authentication
+keys:
+  devkey: secret
+
+# Room configuration
+room:
+  auto_create: true
+  empty_timeout: 300  # 5 minutes - close room after empty
+  max_participants: 100
+
+# Logging
+logging:
+  level: info
+  pion_level: warn
+
+# TURN server for NAT traversal (disabled for local development)
+turn:
+  enabled: false
+
+# Webhook notifications (optional)
+# webhook:
+#   urls:
+#     - http://api-gateway:3000/webhooks/livekit
+#   api_key: devkey
