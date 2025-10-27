@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { Detection, YOLO_CLASSES } from './YOLOService';
+import { Detection } from '../types/ai';
 
 interface DetectionOverlayProps {
   detections: Detection[];

@@ -91,14 +91,14 @@ export function ExternalStreamModal({ isOpen, onClose, room }: ExternalStreamMod
         // Publish video track with custom name to distinguish from camera
         const currentUser = room.localParticipant.identity;
         await room.localParticipant.publishTrack(videoTrack, {
-          name: `📹 ${streamName || 'External Stream'} (by ${currentUser})`,
+          name: `${streamName || 'External Stream'} (by ${currentUser})`,
           source: Track.Source.Camera
         });
         
         // Publish audio track if available
         if (audioTrack) {
           await room.localParticipant.publishTrack(audioTrack, {
-            name: `🎵 ${streamName || 'External Stream'} Audio (by ${currentUser})`,
+            name: `${streamName || 'External Stream'} Audio (by ${currentUser})`,
             source: Track.Source.Microphone
           });
         }
@@ -145,12 +145,12 @@ export function ExternalStreamModal({ isOpen, onClose, room }: ExternalStreamMod
         if (videoTrack) {
           // Publish camera stream to LiveKit room
           await room.localParticipant.publishTrack(videoTrack, {
-            name: `${camera.name} (${camera.ip})`,
+            name: camera.name,  // Just "Camera 1", "Camera 2", etc.
             source: Track.Source.Camera
           });
 
           connectionEstablished = true;
-          console.log(`✅ Camera ${camera.name} connected and published to LiveKit`);
+          console.log(`${camera.name} connected and published to LiveKit from ${camera.ip}`);
         }
       };
 
@@ -289,14 +289,14 @@ export function ExternalStreamModal({ isOpen, onClose, room }: ExternalStreamMod
       // Publish video track with custom name to distinguish from camera
       const currentUser = room.localParticipant.identity;
       await room.localParticipant.publishTrack(videoTrack, {
-        name: `📹 Uploaded Video (by ${currentUser})`,
+        name: `Uploaded Video (by ${currentUser})`,
         source: Track.Source.Camera
       });
       
       // Publish audio track if available
       if (audioTrack) {
         await room.localParticipant.publishTrack(audioTrack, {
-          name: `🎵 Uploaded Video Audio (by ${currentUser})`,
+          name: `Uploaded Video Audio (by ${currentUser})`,
           source: Track.Source.Microphone
         });
       }

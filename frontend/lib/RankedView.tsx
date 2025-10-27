@@ -30,6 +30,9 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
   const rankedTracks: VideoTrackWithScore[] = React.useMemo(() => {
     const tracks: VideoTrackWithScore[] = [];
 
+    console.log('[RankedView] Processing participants:', participants.length);
+    console.log('[RankedView] Available scores:', Array.from(aiScores.keys()));
+
     // Iterate through all participants
     participants.forEach((participant) => {
       // Iterate through all video track publications for this participant
@@ -38,14 +41,15 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
           const trackSid = publication.track.sid;
           const trackName = publication.trackName || 'Video';
 
-          // Try multiple score ID formats for backwards compatibility
-          // Format 1: participant_trackSid (new format)
-          // Format 2: participant.identity (old format, for single camera)
+          // Try multiple score ID formats
+          // Format 1: participant_trackSid
+          // Format 2: participant.identity (YOLO backend uses this)
           let score = aiScores.get(`${participant.identity}_${trackSid}`);
-          if (!score && participant.videoTrackPublications.size === 1) {
-            // Fallback to old format if only one track
+          if (!score) {
             score = aiScores.get(participant.identity);
           }
+
+          console.log(`[RankedView] Participant ${participant.identity}, track ${trackName}:`, score ? `Score ${score.score}` : 'No score');
 
           tracks.push({
             participant,
@@ -65,55 +69,63 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
       return scoreB - scoreA;
     });
 
-    // Assign ranks (only to tracks with scores)
-    let rank = 1;
-    tracks.forEach((item) => {
-      if (item.score) {
-        item.rank = rank++;
-      }
+    // Assign ranks to ALL tracks (even without scores)
+    tracks.forEach((item, index) => {
+      item.rank = index + 1;
     });
+
+    console.log('[RankedView] Ranked tracks:', tracks.map(t => ({ name: t.trackName, rank: t.rank, score: t.score?.score })));
 
     return tracks;
   }, [participants, aiScores]);
 
-  const topTrack = rankedTracks.find(t => t.score);
-  const otherTracks = topTrack ? rankedTracks.filter(t => t !== topTrack) : rankedTracks;
+  // Top track is always rank #1, even without scores
+  const topTrack = rankedTracks[0];
+  const otherTracks = rankedTracks.slice(1);
 
   return (
     <div className={styles.container}>
       {/* Header */}
       <div className={styles.header}>
         <div className={styles.headerContent}>
-          <h1 className={styles.title}>AI Ranked View</h1>
+          <h1 className={styles.title}>YOLO Person Detection Ranked View</h1>
           <div className={styles.statusBadge}>
             <div
               className={styles.statusIndicator}
               style={{ backgroundColor: aiConnected ? '#10b981' : '#ef4444' }}
             />
             <span className={styles.statusText}>
-              {aiConnected ? 'AI Analysis Active (GPT-4o-mini)' : 'AI Disconnected'}
+              {aiConnected ? 'YOLO Detection Active' : 'Detection Disconnected'}
             </span>
           </div>
         </div>
         <div className={styles.participantCount}>
           {participants.length} {participants.length === 1 ? 'participant' : 'participants'} •
-          {rankedTracks.length} {rankedTracks.length === 1 ? 'video' : 'videos'} •
-          {rankedTracks.filter(t => t.score).length} ranked
+          {rankedTracks.length} {rankedTracks.length === 1 ? 'video' : 'videos'} ranked •
+          {rankedTracks.filter(t => t.score).length} with scores
         </div>
       </div>
 
       {/* Top Ranked Video */}
-      {topTrack && topTrack.score && (
+      {topTrack && (
         <div className={styles.topSection}>
           <div className={styles.topLabel}>
-            <span>Top Ranked</span>
+            <span>Top Ranked - #{topTrack.rank}</span>
           </div>
           <div className={styles.topParticipant}>
             <div className={styles.videoContainer}>
               <video
                 ref={(el) => {
                   if (el && topTrack.videoTrack) {
-                    topTrack.videoTrack.attach(el);
+                    // Set dimensions before attaching to prevent dimension detection error
+                    el.style.width = '100%';
+                    el.style.height = '100%';
+
+                    try {
+                      topTrack.videoTrack.attach(el);
+                    } catch (error) {
+                      // Suppress error
+                    }
                   }
                 }}
                 className={styles.video}
@@ -122,7 +134,7 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
                 muted
               />
               <AIScoreOverlay
-                score={topTrack.score}
+                score={topTrack.score || { cam_id: '', camId: '', score: 0, reason: 'Analyzing...', timestamp: Date.now() }}
                 rank={topTrack.rank}
                 showReason={true}
               />
@@ -151,7 +163,15 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
                   <video
                     ref={(el) => {
                       if (el && item.videoTrack) {
-                        item.videoTrack.attach(el);
+                        // Set dimensions before attaching to prevent dimension detection error
+                        el.style.width = '100%';
+                        el.style.height = '100%';
+
+                        try {
+                          item.videoTrack.attach(el);
+                        } catch (error) {
+                          // Suppress error
+                        }
                       }
                     }}
                     className={styles.video}
@@ -159,21 +179,29 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
                     playsInline
                     muted
                   />
-                  {item.score && <AIScoreOverlay score={item.score} rank={item.rank} compact />}
+                  <AIScoreOverlay
+                    score={item.score || { cam_id: '', camId: '', score: 0, reason: 'Analyzing...', timestamp: Date.now() }}
+                    rank={item.rank}
+                    compact
+                  />
                 </div>
                 <div className={styles.participantInfo}>
                   <div className={styles.participantName}>
                     {item.trackName !== 'Video' ? item.trackName : (item.participant.name || item.participant.identity)}
                   </div>
-                  {item.score && (
+                  {item.score ? (
                     <>
                       <div className={styles.scoreInfo}>
                         Score: {Math.round(item.score.score * 100)}% • Updated {new Date(item.score.timestamp).toLocaleTimeString()}
                       </div>
                       <div className={styles.reason}>
-                        <strong>AI:</strong> {item.score.reason}
+                        <strong>Detection:</strong> {item.score.reason}
                       </div>
                     </>
+                  ) : (
+                    <div className={styles.scoreInfo}>
+                      Waiting for detection data...
+                    </div>
                   )}
                 </div>
               </div>
@@ -186,7 +214,7 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
       {rankedTracks.length === 0 && (
         <div className={styles.emptyState}>
           <h3>No videos yet</h3>
-          <p>Join with your camera or upload videos to see them ranked by AI</p>
+          <p>Join with your camera or upload videos to see them ranked by person detection</p>
         </div>
       )}
     </div>

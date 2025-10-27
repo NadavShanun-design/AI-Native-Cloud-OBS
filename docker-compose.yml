@@ -91,6 +91,24 @@ services:
     networks:
       - cloud-obs-network
 
+  # MediaMTX - Advanced media streaming server (RTSP/WebRTC/HLS)
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: cloud-obs-mediamtx
+    ports:
+      - "8889:8889"  # WebRTC server
+      - "8888:8888"  # HLS server
+      - "9997:9997"  # API server
+      - "8189:8189/udp"  # WebRTC UDP
+      - "8555:8554"  # RTSP server (mapped to 8555 to avoid conflict with go2rtc)
+      - "1935:1935"  # RTMP server
+      - "8890:8890"  # SRT server
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml
+    restart: unless-stopped
+    networks:
+      - cloud-obs-network
+
 volumes:
   redis-data:
     driver: local

@@ -21,7 +21,7 @@ import { LiveVideoConference } from '@/lib/LiveVideoConference';
 import { RankedView } from '@/lib/RankedView';
 import { YOLOView } from '@/lib/YOLOView';
 import { DashboardView } from '@/lib/DashboardView';
-import { CameraAutoConnect } from '@/lib/CameraAutoConnect';
+import { CameraAutoConnectEnhanced } from '@/lib/CameraAutoConnectEnhanced';
 import { AIScore, ScoreMessage } from '@/lib/types/ai';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_MAIN_BACKEND_URL || 'http://localhost:3000';
@@ -42,12 +42,12 @@ export function VideoConferenceClientImpl(props: {
   // AI Ranking System state
   const [aiScores, setAiScores] = useState<Map<string, AIScore>>(new Map());
   const [aiConnected, setAiConnected] = useState(false);
-  const [activeView, setActiveView] = useState<'live' | 'view' | 'dashboard' | 'personalize'>('live');
+  const [activeView, setActiveView] = useState<'live' | 'ranked' | 'view' | 'dashboard' | 'personalize'>('live');
 
   // Handle tab changes from sidebar
   const handleTabChange = (tabId: string) => {
     console.log('Tab changed to:', tabId);
-    setActiveView(tabId as 'live' | 'view' | 'dashboard' | 'personalize');
+    setActiveView(tabId as 'live' | 'ranked' | 'view' | 'dashboard' | 'personalize');
   };
 
   const roomOptions = useMemo((): RoomOptions => {
@@ -139,6 +139,8 @@ export function VideoConferenceClientImpl(props: {
             }
           />
         );
+      case 'ranked':
+        return <RankedView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'view':
         return <YOLOView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'dashboard':
@@ -186,15 +188,20 @@ export function VideoConferenceClientImpl(props: {
               // Initial scores - replace entire map
               const newScores = new Map<string, AIScore>();
               message.payload.forEach((score: AIScore) => {
-                newScores.set(score.camId || score.cam_id, score);
+                const key = score.camId || score.cam_id;
+                newScores.set(key, score);
+                console.log(`[WebSocket] Initial score for ${key}:`, score.score);
               });
               setAiScores(newScores);
+              console.log('[WebSocket] Loaded initial scores:', newScores.size);
             } else if (message.type === 'score' && !Array.isArray(message.payload)) {
               // Single score update
               const score = message.payload as AIScore;
+              const key = score.camId || score.cam_id;
+              console.log(`[WebSocket] Score update for ${key}:`, score.score, score.reason);
               setAiScores((prev) => {
                 const updated = new Map(prev);
-                updated.set(score.camId || score.cam_id, score);
+                updated.set(key, score);
                 return updated;
               });
             }
@@ -239,8 +246,8 @@ export function VideoConferenceClientImpl(props: {
   return (
     <div className="lk-room-container" style={{ display: 'flex', height: '100vh' }}>
       <RoomContext.Provider value={room}>
-        {/* Auto-connect Reolink cameras when room is ready */}
-        <CameraAutoConnect room={isConnected ? room : null} enabled={true} />
+        {/* Auto-connect Reolink cameras when room is ready with status indicator */}
+        <CameraAutoConnectEnhanced room={isConnected ? room : null} enabled={true} showStatus={true} />
 
         <Sidebar
           isCollapsed={sidebarCollapsed}

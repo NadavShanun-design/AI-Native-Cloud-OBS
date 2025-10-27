@@ -1,5 +1,7 @@
-# go2rtc configuration for Reolink cameras
-# Converts RTSP streams to WebRTC for browser access
+# go2rtc configuration for Reolink RLC-820A cameras
+# RLC-820A specific: Main stream is H.265, sub stream is H.264
+# RTSP URL format: rtsp://user:pass@ip:554/h264Preview_01_sub (SINGLE slash!)
+# Tested format from RLC-820A users: /h264Preview_01_sub for sub, /h264Preview_01_main for main
 
 streams:
   # Camera 1 - 10.39.12.110
@@ -23,21 +25,21 @@ streams:
   camera_3_hd:
     - rtsp://admin:Password03!@10.39.12.104:554/h264Preview_01_main
 
-  # Camera 4 - 10.39.12.106
+  # Camera 4 - 10.39.12.106 (different password)
   camera_4:
     - rtsp://admin:zSQ6e9MB&03!@10.39.12.106:554/h264Preview_01_sub
 
   camera_4_hd:
     - rtsp://admin:zSQ6e9MB&03!@10.39.12.106:554/h264Preview_01_main
 
-  # Camera 5 - 10.39.12.109
+  # Camera 5 - 10.39.12.109 (different password)
   camera_5:
     - rtsp://admin:zSQ6e9MB&03!@10.39.12.109:554/h264Preview_01_sub
 
   camera_5_hd:
     - rtsp://admin:zSQ6e9MB&03!@10.39.12.109:554/h264Preview_01_main
 
-  # Camera 6 - 10.39.12.108
+  # Camera 6 - 10.39.12.108 (different password)
   camera_6:
     - rtsp://admin:zSQ6e9MB&03!@10.39.12.108:554/h264Preview_01_sub
 
@@ -51,7 +53,8 @@ webrtc:
 # API configuration
 api:
   listen: ":1984"
+  origin: "*"
 
-# Log level (trace, debug, info, warn, error)
+# Logging
 log:
-  level: info
+  level: debug

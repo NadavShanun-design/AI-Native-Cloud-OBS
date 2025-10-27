@@ -44,14 +44,14 @@ export function CameraAutoConnect({ room, enabled = true }: CameraAutoConnectPro
         const videoTrack = stream.getVideoTracks()[0];
 
         if (videoTrack) {
-          // Publish camera stream to LiveKit room
+          // Publish camera stream to LiveKit room with camera name as participant identity
           await room.localParticipant.publishTrack(videoTrack, {
-            name: `${camera.name} (${camera.ip})`,
+            name: camera.name,  // Just "Camera 1", "Camera 2", etc.
             source: Track.Source.Camera
           });
 
           connectedCameras.current.add(camera.id);
-          console.log(`✅ ${camera.name} connected and streaming`);
+          console.log(`✅ ${camera.name} connected and streaming from ${camera.ip}`);
         }
       };
 
@@ -118,15 +118,18 @@ export function CameraAutoConnect({ room, enabled = true }: CameraAutoConnectPro
       };
 
       ws.onerror = (error) => {
-        console.error(`WebSocket error for ${camera.name}:`, error);
+        console.error(`[Camera Connection] WebSocket error for ${camera.name} (${camera.ip}):`, error);
+        console.error(`[Camera Connection] Check if go2rtc is running and camera is accessible at: ws://localhost:1984/api/ws?src=${camera.streamName}`);
       };
 
       ws.onclose = () => {
-        console.log(`WebSocket closed for ${camera.name}`);
+        console.log(`[Camera Connection] WebSocket closed for ${camera.name} (${camera.ip})`);
       };
 
     } catch (error) {
-      console.error(`Error connecting ${camera.name}:`, error);
+      console.error(`[Camera Connection] Failed to connect ${camera.name} (${camera.ip}):`, error);
+      console.error(`[Camera Connection] Camera may be offline, RTSP may be disabled, or credentials may be incorrect`);
+      // Do not throw or display error to UI - just log it
     }
   };
 

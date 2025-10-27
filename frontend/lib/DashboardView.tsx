@@ -194,18 +194,9 @@ export function DashboardView({ aiScores, aiConnected }: DashboardViewProps) {
       <div className={styles.header}>
         <div className={styles.headerContent}>
           <h1 className={styles.title}>AI Dashboard</h1>
-          <div className={styles.statusBadge}>
-            <div
-              className={styles.statusIndicator}
-              style={{ backgroundColor: aiConnected ? '#10b981' : '#ef4444' }}
-            />
-            <span className={styles.statusText}>
-              {aiConnected ? 'AI Connected' : 'AI Disconnected'}
-            </span>
-          </div>
         </div>
         <button className={styles.uploadButton} onClick={handleUploadClick}>
-          📤 Upload Videos
+          Upload Videos
         </button>
         <input
           ref={fileInputRef}
@@ -227,9 +218,9 @@ export function DashboardView({ aiScores, aiConnected }: DashboardViewProps) {
                 <div className={styles.uploadInfo}>
                   <div className={styles.uploadFilename}>{upload.filename}</div>
                   <div className={styles.uploadStatus}>
-                    {upload.status === 'uploading' && '⏳ Uploading...'}
-                    {upload.status === 'playing' && '✅ Playing'}
-                    {upload.status === 'error' && `❌ Error: ${upload.error}`}
+                    {upload.status === 'uploading' && 'Uploading...'}
+                    {upload.status === 'playing' && 'Playing'}
+                    {upload.status === 'error' && `Error: ${upload.error}`}
                   </div>
                 </div>
                 <button
@@ -249,7 +240,6 @@ export function DashboardView({ aiScores, aiConnected }: DashboardViewProps) {
       {topTrack && topTrack.score && (
         <div className={styles.topSection}>
           <h2 className={styles.sectionTitle}>
-            <span className={styles.medal}>🏆</span>
             Top Ranked Video
           </h2>
           <div className={styles.topVideo}>
@@ -257,7 +247,15 @@ export function DashboardView({ aiScores, aiConnected }: DashboardViewProps) {
               <video
                 ref={(el) => {
                   if (el && topTrack.videoTrack) {
-                    topTrack.videoTrack.attach(el);
+                    // Set dimensions before attaching to prevent dimension detection error
+                    el.style.width = '100%';
+                    el.style.height = '100%';
+
+                    try {
+                      topTrack.videoTrack.attach(el);
+                    } catch (error) {
+                      // Suppress error
+                    }
                   }
                 }}
                 className={styles.video}
@@ -308,7 +306,15 @@ export function DashboardView({ aiScores, aiConnected }: DashboardViewProps) {
                     <video
                       ref={(el) => {
                         if (el && item.videoTrack) {
-                          item.videoTrack.attach(el);
+                          // Set dimensions before attaching to prevent dimension detection error
+                          el.style.width = '100%';
+                          el.style.height = '100%';
+
+                          try {
+                            item.videoTrack.attach(el);
+                          } catch (error) {
+                            // Suppress error
+                          }
                         }
                       }}
                       className={styles.video}
@@ -336,11 +342,10 @@ export function DashboardView({ aiScores, aiConnected }: DashboardViewProps) {
       {/* Empty State */}
       {rankedTracks.length === 0 && (
         <div className={styles.emptyState}>
-          <div className={styles.emptyIcon}>🎥</div>
           <h3>No videos yet</h3>
           <p>Upload videos to see them ranked by AI</p>
           <button className={styles.emptyButton} onClick={handleUploadClick}>
-            📤 Upload Your First Video
+            Upload Your First Video
           </button>
         </div>
       )}

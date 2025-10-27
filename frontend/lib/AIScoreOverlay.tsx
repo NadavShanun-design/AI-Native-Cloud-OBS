@@ -18,32 +18,23 @@ export function AIScoreOverlay({ score, rank, showReason = false, compact = fals
 
   const scorePercent = Math.round(score.score * 100);
 
-  // Determine color based on score
-  const getScoreColor = (scoreValue: number): string => {
-    if (scoreValue >= 0.8) return '#10b981'; // Green - High
-    if (scoreValue >= 0.6) return '#f59e0b'; // Orange - Good
-    return '#ef4444'; // Red - Low
-  };
+  // Use white color for all scores
+  const scoreColor = '#ffffff';
 
-  const scoreColor = getScoreColor(score.score);
-
-  // Get medal emoji for top 3
-  const getMedal = (position?: number): string => {
+  // Get rank label
+  const getRankLabel = (position?: number): string => {
     if (!position) return '';
-    if (position === 1) return '🥇';
-    if (position === 2) return '🥈';
-    if (position === 3) return '🥉';
-    return '';
+    return `#${position}`;
   };
 
-  const medal = getMedal(rank);
+  const rankLabel = getRankLabel(rank);
 
   if (compact) {
     return (
       <div className={styles.compact} style={{ borderColor: scoreColor }}>
         {rank && (
           <span className={styles.rankBadge}>
-            {medal || `#${rank}`}
+            {rankLabel}
           </span>
         )}
         <span className={styles.scoreValue} style={{ color: scoreColor }}>
@@ -58,18 +49,18 @@ export function AIScoreOverlay({ score, rank, showReason = false, compact = fals
       <div className={styles.header}>
         {rank && (
           <div className={styles.rank} style={{ backgroundColor: scoreColor }}>
-            {medal || `#${rank}`}
+            {rankLabel}
           </div>
         )}
         <div className={styles.score} style={{ color: scoreColor }}>
           <span className={styles.scoreNumber}>{scorePercent}</span>
-          <span className={styles.scoreLabel}>score</span>
+          <span className={styles.scoreLabel}>coverage</span>
         </div>
       </div>
 
       {showReason && score.reason && (
         <div className={styles.reason}>
-          <div className={styles.reasonLabel}>AI Analysis:</div>
+          <div className={styles.reasonLabel}>Person Detection:</div>
           <div className={styles.reasonText}>{score.reason}</div>
         </div>
       )}

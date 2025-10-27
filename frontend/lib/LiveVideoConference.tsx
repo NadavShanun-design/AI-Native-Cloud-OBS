@@ -150,7 +150,7 @@ function RankBadgeOverlay({ participantRanks, aiScores }: { participantRanks: Ma
       const participantTiles = document.querySelectorAll('[data-lk-participant-identity]');
 
       if (participantTiles.length > 0) {
-        console.log('🔍 Found', participantTiles.length, 'participant tiles');
+        console.log('Found', participantTiles.length, 'participant tiles');
       }
 
       participantTiles.forEach((tile) => {
@@ -171,22 +171,16 @@ function RankBadgeOverlay({ participantRanks, aiScores }: { participantRanks: Ma
           const badgeWrapper = document.createElement('div');
           badgeWrapper.className = 'live-rank-badge-wrapper';
 
-          // Get medal emoji for top 3
-          const getMedal = (position: number): string => {
-            if (position === 1) return '🥇';
-            if (position === 2) return '🥈';
-            if (position === 3) return '🥉';
+          // Get rank label
+          const getRankLabel = (position: number): string => {
             return `#${position}`;
           };
 
           const getRankColor = (position: number): string => {
-            if (position === 1) return '#ffd700'; // Gold
-            if (position === 2) return '#c0c0c0'; // Silver
-            if (position === 3) return '#cd7f32'; // Bronze
-            return '#6b7280'; // Gray for others
+            return '#ffffff'; // White for all ranks
           };
 
-          const medal = getMedal(rank);
+          const rankLabel = getRankLabel(rank);
           const color = getRankColor(rank);
           const scorePercent = Math.round(score.score * 100);
 
@@ -210,7 +204,9 @@ function RankBadgeOverlay({ participantRanks, aiScores }: { participantRanks: Ma
               <span style="
                 font-size: 20px;
                 line-height: 1;
-              ">${medal}</span>
+                font-weight: bold;
+                color: ${color};
+              ">${rankLabel}</span>
               <div style="
                 display: flex;
                 flex-direction: column;
@@ -232,7 +228,7 @@ function RankBadgeOverlay({ participantRanks, aiScores }: { participantRanks: Ma
           `;
 
           tile.appendChild(badgeWrapper);
-          console.log('✅ Badge added:', identity, 'rank', rank, 'score', scorePercent);
+          console.log('Badge added:', identity, 'rank', rank, 'score', scorePercent);
         }
       });
     }, 500);

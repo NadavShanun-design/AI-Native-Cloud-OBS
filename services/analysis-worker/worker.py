@@ -38,11 +38,107 @@ LIVEKIT_URL = os.getenv('LIVEKIT_URL', 'ws://livekit-server:7880')
 LIVEKIT_API_KEY = os.getenv('LIVEKIT_API_KEY', 'devkey')
 LIVEKIT_API_SECRET = os.getenv('LIVEKIT_API_SECRET', 'secret')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379')
-FRAME_SAMPLE_INTERVAL = float(os.getenv('FRAME_SAMPLE_INTERVAL', '3.0'))
+FRAME_SAMPLE_INTERVAL = float(os.getenv('FRAME_SAMPLE_INTERVAL', '1.0'))  # Reduced from 3.0 to 1.0 for faster updates
 ROOM_NAME = os.getenv('ROOM_NAME', 'geome-hackathon')
 
 # Initialize clients
 openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+
+class YOLOPersonAnalyzer:
+    """Analyzes video frames using YOLO to detect all objects and calculate person coverage percentage"""
+
+    def __init__(self):
+        from ultralytics import YOLO
+        # Use YOLOv11 nano for speed - it will auto-download on first use
+        self.model = YOLO('yolo11n.pt')
+        logger.info("YOLOPersonAnalyzer initialized with yolo11n.pt")
+
+    async def analyze_frame(self, frame: np.ndarray) -> Dict[str, any]:
+        """
+        Detect all objects and calculate person coverage percentage for ranking
+
+        Args:
+            frame: OpenCV frame (numpy array)
+
+        Returns:
+            Dict with 'score', 'person_percentage', 'person_count', 'reason', 'detections'
+        """
+        try:
+            # Run YOLO inference - detect ALL classes for comprehensive detection
+            # conf=0.25 (confidence threshold), iou=0.45 (NMS threshold - Ultralytics standard)
+            results = self.model(frame, conf=0.25, iou=0.45, verbose=False)
+
+            # Calculate frame area
+            frame_height, frame_width = frame.shape[:2]
+            frame_area = frame_height * frame_width
+
+            # Initialize counters
+            total_person_area = 0
+            person_count = 0
+            detections = []
+
+            # Process all detections
+            for result in results:
+                for box in result.boxes:
+                    # Get bounding box coordinates (xyxy format: x1, y1, x2, y2)
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    confidence = float(box.conf[0].cpu().numpy())
+                    class_id = int(box.cls[0].cpu().numpy())
+                    class_name = self.model.names[class_id]
+
+                    # Store detection data
+                    detection = {
+                        'x0': float(x1),
+                        'y0': float(y1),
+                        'x1': float(x2),
+                        'y1': float(y2),
+                        'confidence': confidence,
+                        'classId': class_id,
+                        'className': class_name
+                    }
+                    detections.append(detection)
+
+                    # Calculate person coverage for ranking (only for person class)
+                    if class_id == 0:  # person class
+                        box_width = x2 - x1
+                        box_height = y2 - y1
+                        box_area = box_width * box_height
+                        total_person_area += box_area
+                        person_count += 1
+
+            # Calculate percentage of screen covered by people (for ranking)
+            person_percentage = (total_person_area / frame_area) * 100 if frame_area > 0 else 0
+
+            # Normalize to 0.0-1.0 for compatibility with existing score system
+            normalized_score = min(person_percentage / 100.0, 1.0)
+
+            # Summary for reason
+            total_objects = len(detections)
+            if person_count > 0:
+                reason = f"{person_count} person(s), {total_objects} total objects, {person_percentage:.1f}% coverage"
+            else:
+                reason = f"{total_objects} object(s) detected, no people"
+
+            logger.info(f"YOLO Analysis: {reason}, score={normalized_score:.3f}")
+
+            return {
+                'score': normalized_score,
+                'person_percentage': person_percentage,
+                'person_count': person_count,
+                'reason': reason,
+                'detections': detections  # NEW: Include full detection data
+            }
+
+        except Exception as e:
+            logger.error(f"YOLO frame analysis error: {e}", exc_info=True)
+            return {
+                'score': 0.0,
+                'person_percentage': 0.0,
+                'person_count': 0,
+                'reason': f'YOLO analysis failed: {str(e)}',
+                'detections': []
+            }
 
 
 class VideoAnalyzer:
@@ -191,10 +287,16 @@ class LiveKitVideoWorker:
             try:
                 # Get all participants except self (local_participant)
                 all_participants = self.room.participants_by_identity
+
+                # DEBUG: Log all participants
+                logger.info(f"DEBUG: Total participants in room: {len(all_participants)}")
+                logger.info(f"DEBUG: All participant identities: {list(all_participants.keys())}")
+                logger.info(f"DEBUG: Local participant identity: {self.room.local_participant.identity}")
+
                 # Filter out the AI worker itself
                 remote_participants = {
                     identity: p for identity, p in all_participants.items()
-                    if identity != "analysis-worker"
+                    if identity != self.room.local_participant.identity
                 }
 
                 remote_count = len(remote_participants)
@@ -203,6 +305,7 @@ class LiveKitVideoWorker:
                 if remote_count > 0:
                     for identity, participant in remote_participants.items():
                         logger.info(f"👤 Found existing participant: {identity}")
+                        logger.info(f"DEBUG: Participant {identity} has {len(participant.tracks)} tracks")
                         await self.subscribe_to_participant(participant)
                 else:
                     logger.info("No remote participants in room yet - waiting for participants to join...")
@@ -378,7 +481,7 @@ class LiveKitVideoWorker:
             logger.error(f"Fatal error in video processing for {track_identifier}: {e}", exc_info=True)
 
     async def publish_score(self, score_id: str, result: Dict[str, any], track_name: str = ""):
-        """Publish score to Redis pub/sub"""
+        """Publish score and detection data to Redis pub/sub"""
         try:
             display_name = track_name if track_name else score_id
 
@@ -390,14 +493,16 @@ class LiveKitVideoWorker:
                     'score': result['score'],
                     'reason': result['reason'],
                     'timestamp': int(time.time() * 1000),
-                    'track_name': track_name  # Include track name for better identification
+                    'track_name': track_name,  # Include track name for better identification
+                    'detections': result.get('detections', [])  # NEW: Include detection bounding boxes
                 }
             }
 
             # Publish to Redis channel
             await self.redis.publish('scores.stream', json.dumps(message))
 
-            logger.info(f"📊 Published score for {display_name}: {result['score']:.2f}")
+            detection_count = len(result.get('detections', []))
+            logger.info(f"📊 Published score for {display_name}: {result['score']:.2f} ({detection_count} detections)")
 
         except Exception as e:
             logger.error(f"Failed to publish score: {e}", exc_info=True)
@@ -423,23 +528,28 @@ async def generate_worker_token() -> str:
 async def main():
     """Main worker loop"""
     logger.info("=" * 80)
-    logger.info("🤖 AI Video Analysis Worker Starting")
+    logger.info("🤖 YOLO Person Detection Worker Starting")
     logger.info("=" * 80)
-    logger.info(f"OpenAI Model: {OPENAI_MODEL}")
+    logger.info(f"OpenAI Model: {OPENAI_MODEL} (running in background)")
     logger.info(f"LiveKit URL: {LIVEKIT_URL}")
     logger.info(f"Redis URL: {REDIS_URL}")
     logger.info(f"Room: {ROOM_NAME}")
     logger.info(f"Frame Sample Interval: {FRAME_SAMPLE_INTERVAL}s")
+    logger.info(f"Ranking Method: YOLO Person Coverage Percentage")
     logger.info("=" * 80)
 
     # Initialize Redis
     redis_client = await redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
     logger.info("✅ Connected to Redis")
 
-    # Initialize analyzer
-    analyzer = VideoAnalyzer()
+    # Initialize YOLO analyzer (used for ranking)
+    analyzer = YOLOPersonAnalyzer()
 
-    # Initialize LiveKit worker
+    # Keep AI analyzer running in background (not used for ranking, but available)
+    ai_analyzer = VideoAnalyzer()
+    logger.info("ℹ️  AI VLM analyzer initialized but not used for ranking")
+
+    # Initialize LiveKit worker with YOLO analyzer
     worker = LiveKitVideoWorker(analyzer, redis_client)
 
     # Generate worker token

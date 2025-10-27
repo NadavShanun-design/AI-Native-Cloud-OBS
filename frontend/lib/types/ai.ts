@@ -2,12 +2,23 @@
  * TypeScript types for AI video ranking system
  */
 
+export interface Detection {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  confidence: number;
+  classId: number;
+  className: string;
+}
+
 export interface AIScore {
   cam_id: string;
   camId: string;
   score: number; // 0.0 to 1.0
   reason: string;
   timestamp: number;
+  detections?: Detection[];  // NEW: Detection data from backend YOLO
 }
 
 export interface ScoreMessage {

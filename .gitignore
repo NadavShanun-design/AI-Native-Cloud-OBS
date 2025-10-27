@@ -119,3 +119,10 @@ Thumbs.db
 # Backup files
 *.bak
 *.backup
+
+# External repositories (reference only, not committed)
+mediamtx-main/
+neolink-master/
+
+# Build artifacts
+target/

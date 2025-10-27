@@ -120,8 +120,9 @@
 }
 
 .controlButton.active {
-  background: #4f46e5;
-  border-color: #4f46e5;
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #000000;
 }
 
 .toggles {
@@ -166,15 +167,15 @@
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 12px;
-  color: #fbbf24;
+  color: #ffffff;
 }
 
 .topTile {
-  border: 2px solid #fbbf24;
+  border: 2px solid #ffffff;
   border-radius: 12px;
   overflow: hidden;
   background: #1a1f29;
-  box-shadow: 0 10px 30px rgba(251, 191, 36, 0.2);
+  box-shadow: 0 10px 30px rgba(255, 255, 255, 0.2);
 }
 
 /* Grid Section */
@@ -204,8 +205,8 @@
 
 .gridTile:hover {
   transform: translateY(-2px);
-  border-color: #4f46e5;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+  border-color: #ffffff;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
 }
 
 /* Video Container */
@@ -261,7 +262,7 @@
 
 .scoreValue {
   font-weight: 600;
-  color: #10b981;
+  color: #ffffff;
   margin-bottom: 4px;
 }
 

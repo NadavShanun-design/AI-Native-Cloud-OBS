@@ -30,12 +30,24 @@ interface TokenRequest {
   name?: string;
 }
 
+interface Detection {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  confidence: number;
+  classId: number;
+  className: string;
+}
+
 interface ScoreData {
   cam_id: string;
   camId: string;
   score: number;
   reason: string;
   timestamp: number;
+  track_name?: string;
+  detections: Detection[];  // NEW: Include detection data from backend
 }
 
 interface ScoreMessage {
@@ -49,6 +61,7 @@ interface RankingEntry {
   score: number;
   reason: string;
   timestamp: number;
+  detections?: Detection[];  // NEW: Optional detection data
 }
 
 // In-memory score storage
@@ -227,20 +240,22 @@ async function setupRedis(server: FastifyInstance) {
       const scoreMessage: ScoreMessage = JSON.parse(message);
 
       if (scoreMessage.type === 'score') {
-        const { cam_id, score, reason, timestamp } = scoreMessage.payload;
+        const { cam_id, score, reason, timestamp, detections } = scoreMessage.payload;
 
-        // Update in-memory scores
+        // Update in-memory scores with detection data
         scores.set(cam_id, {
           participantId: cam_id,
           participantName: cam_id, // Can be enhanced with actual names
           score,
           reason,
-          timestamp
+          timestamp,
+          detections: detections || []  // Include detections from backend
         });
 
-        server.log.debug(`📊 Score update: ${cam_id} = ${score}`);
+        const detectionCount = detections ? detections.length : 0;
+        server.log.debug(`📊 Score update: ${cam_id} = ${score} (${detectionCount} detections)`);
 
-        // Broadcast to all WebSocket clients
+        // Broadcast to all WebSocket clients (includes detection data)
         const broadcastMessage = JSON.stringify(scoreMessage);
         wsClients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {

@@ -26,9 +26,10 @@ interface SidebarProps {
 
 const defaultItems: SidebarItem[] = [
   { id: 'live', label: 'Live2', icon: <LiveIcon size={16} />, isActive: true },
-  { id: 'view', label: 'View', icon: <ViewIcon size={16} /> },
-  { id: 'personalize', label: 'Personalize', icon: <PersonalizeIcon size={16} /> },
+  { id: 'ranked', label: 'Ranked', icon: <ViewIcon size={16} /> },
+  { id: 'view', label: 'YOLO', icon: <ViewIcon size={16} /> },
   { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon size={16} /> },
+  { id: 'personalize', label: 'Personalize', icon: <PersonalizeIcon size={16} /> },
   { id: 'external-stream', label: 'Add Stream', icon: <ExternalStreamIcon size={16} /> },
 ];
 
