@@ -52,7 +52,13 @@ class YOLOPersonAnalyzer:
         from ultralytics import YOLO
         # Use YOLOv11 nano for speed - it will auto-download on first use
         self.model = YOLO('yolo11n.pt')
-        logger.info("YOLOPersonAnalyzer initialized with yolo11n.pt")
+
+        # Warm up model with a dummy prediction for faster first inference
+        import numpy as np
+        dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
+        self.model(dummy_frame, verbose=False)
+
+        logger.info("YOLOPersonAnalyzer initialized with yolo11n.pt (warmed up)")
 
     async def analyze_frame(self, frame: np.ndarray) -> Dict[str, any]:
         """
@@ -67,7 +73,8 @@ class YOLOPersonAnalyzer:
         try:
             # Run YOLO inference - detect ALL classes for comprehensive detection
             # conf=0.25 (confidence threshold), iou=0.45 (NMS threshold - Ultralytics standard)
-            results = self.model(frame, conf=0.25, iou=0.45, verbose=False)
+            # max_det=300 (maximum detections, Ultralytics default for performance)
+            results = self.model(frame, conf=0.25, iou=0.45, max_det=300, verbose=False)
 
             # Calculate frame area
             frame_height, frame_width = frame.shape[:2]

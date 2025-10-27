@@ -6,11 +6,12 @@ import {
   useParticipants,
   ParticipantTile,
   useTrackReferences,
+  useRoomContext,
   TrackReferenceOrPlaceholder,
   LayoutContextProvider,
   type MessageFormatter,
 } from '@livekit/components-react';
-import { Track } from 'livekit-client';
+import { Track, Participant } from 'livekit-client';
 import { AIScore } from './types/ai';
 import { LiveRankBadge } from './LiveRankBadge';
 import styles from '../styles/LiveVideoConference.module.css';
@@ -128,12 +129,186 @@ export function LiveVideoConference({
 
   return (
     <div className={styles.container} style={{ position: 'relative' }}>
-      <VideoConference
-        chatMessageFormatter={chatMessageFormatter}
-        SettingsComponent={SettingsComponent}
+      {/* Custom grid that shows ALL video tracks including local participant cameras */}
+      <CameraGrid participantRanks={participantRanks} aiScores={effectiveScores} />
+    </div>
+  );
+}
+
+// Custom grid component to display all camera feeds
+function CameraGrid({ participantRanks, aiScores }: { participantRanks: Map<string, number>, aiScores: Map<string, AIScore> }) {
+  const room = useRoomContext();
+  const participants = useParticipants();
+
+  // Get ALL video tracks (including local participant's camera tracks)
+  const videoTracks = React.useMemo(() => {
+    const tracks: Array<{ participant: Participant; trackSid: string; trackName: string; videoTrack: any; rank?: number; score?: AIScore }> = [];
+
+    // Include local participant
+    const allParticipants = [room.localParticipant, ...participants.filter(p => p !== room.localParticipant)];
+
+    allParticipants.forEach((participant) => {
+      participant.videoTrackPublications.forEach((publication) => {
+        if (publication.track && publication.source === Track.Source.Camera) {
+          const identity = participant.identity;
+          const rank = participantRanks.get(identity);
+          const score = aiScores.get(identity);
+
+          tracks.push({
+            participant,
+            trackSid: publication.track.sid,
+            trackName: publication.trackName || participant.name || participant.identity,
+            videoTrack: publication.track,
+            rank,
+            score,
+          });
+        }
+      });
+    });
+
+    return tracks;
+  }, [room.localParticipant, participants, participantRanks, aiScores]);
+
+  console.log('[CameraGrid] Rendering', videoTracks.length, 'video tracks');
+
+  if (videoTracks.length === 0) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        color: 'white',
+        flexDirection: 'column',
+        gap: '20px',
+      }}>
+        <h2>No Camera Feeds Yet</h2>
+        <p>Cameras are connecting... Check the status indicator at the top.</p>
+        <p style={{ fontSize: '14px', opacity: 0.7 }}>
+          Expected: 3 cameras (Camera 1, 2, 3) should connect automatically
+        </p>
+      </div>
+    );
+  }
+
+  // Calculate grid layout
+  const gridCols = Math.ceil(Math.sqrt(videoTracks.length));
+  const gridRows = Math.ceil(videoTracks.length / gridCols);
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+        gridTemplateRows: `repeat(${gridRows}, 1fr)`,
+        gap: '10px',
+        height: '100%',
+        padding: '10px',
+        backgroundColor: '#1a1a1a',
+      }}
+    >
+      {videoTracks.map((track) => (
+        <VideoTile key={track.trackSid} track={track} />
+      ))}
+    </div>
+  );
+}
+
+// Video tile component
+function VideoTile({ track }: { track: any }) {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+
+  React.useEffect(() => {
+    if (videoRef.current && track.videoTrack) {
+      try {
+        track.videoTrack.attach(videoRef.current);
+        console.log('[VideoTile] Attached video:', track.trackName);
+      } catch (error) {
+        console.error('[VideoTile] Error attaching video:', error);
+      }
+
+      return () => {
+        try {
+          track.videoTrack.detach(videoRef.current!);
+        } catch (error) {
+          // Ignore detach errors
+        }
+      };
+    }
+  }, [track.videoTrack]);
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        backgroundColor: '#000',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+        }}
       />
-      {/* Add rank badge overlays using CSS absolute positioning */}
-      <RankBadgeOverlay participantRanks={participantRanks} aiScores={effectiveScores} />
+
+      {/* Participant name overlay */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: '10px',
+          left: '10px',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          color: 'white',
+          padding: '4px 8px',
+          borderRadius: '4px',
+          fontSize: '14px',
+          fontWeight: 'bold',
+        }}
+      >
+        {track.trackName}
+      </div>
+
+      {/* Rank badge */}
+      {track.rank && track.score && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '10px',
+            right: '10px',
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: '12px',
+            padding: '8px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            border: '3px solid #ffffff',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.8)',
+          }}
+        >
+          <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#fff' }}>
+            #{track.rank}
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', lineHeight: 1 }}>
+              Rank {track.rank}
+            </span>
+            <span style={{ fontSize: '12px', color: '#fff', lineHeight: 1 }}>
+              {Math.round(track.score.score * 100)}% score
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

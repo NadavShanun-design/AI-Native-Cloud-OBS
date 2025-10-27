@@ -30,11 +30,14 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
   const rankedTracks: VideoTrackWithScore[] = React.useMemo(() => {
     const tracks: VideoTrackWithScore[] = [];
 
-    console.log('[RankedView] Processing participants:', participants.length);
+    // Include local participant (where cameras are published) AND remote participants
+    const allParticipants = [room.localParticipant, ...participants.filter(p => p !== room.localParticipant)];
+
+    console.log('[RankedView] Processing participants:', allParticipants.length, '(including local)');
     console.log('[RankedView] Available scores:', Array.from(aiScores.keys()));
 
-    // Iterate through all participants
-    participants.forEach((participant) => {
+    // Iterate through all participants (including local)
+    allParticipants.forEach((participant) => {
       // Iterate through all video track publications for this participant
       participant.videoTrackPublications.forEach((publication) => {
         if (publication.track) {
@@ -77,7 +80,7 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
     console.log('[RankedView] Ranked tracks:', tracks.map(t => ({ name: t.trackName, rank: t.rank, score: t.score?.score })));
 
     return tracks;
-  }, [participants, aiScores]);
+  }, [room.localParticipant, participants, aiScores]);
 
   // Top track is always rank #1, even without scores
   const topTrack = rankedTracks[0];

@@ -30,13 +30,17 @@ interface ParticipantWithDetections {
 }
 
 export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
+  const room = useRoomContext();
   const participants = useParticipants();
 
   // Map participants to their detections from backend
   const participantData = useMemo(() => {
     const data: ParticipantWithDetections[] = [];
 
-    participants.forEach((participant) => {
+    // Include local participant (where cameras are published) AND remote participants
+    const allParticipants = [room.localParticipant, ...participants.filter(p => p !== room.localParticipant)];
+
+    allParticipants.forEach((participant) => {
       participant.videoTrackPublications.forEach((publication) => {
         if (publication.track) {
           const trackSid = publication.track.sid;
@@ -66,7 +70,7 @@ export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
     });
 
     return data;
-  }, [participants, aiScores]);
+  }, [room.localParticipant, participants, aiScores]);
 
   // Rank participants by AI score (person coverage)
   const rankedParticipants = useMemo(() => {
