@@ -1,6 +1,7 @@
 """
-AI Video Analysis Worker
-Samples video frames from LiveKit streams and scores them using OpenAI GPT-4o-mini
+YOLO DEV - Development/Testing AI Video Analysis Worker
+Samples video frames from LiveKit streams at 1 FPS and scores them using YOLO
+Publishes to separate Redis channel (scores.yolo-dev) to avoid interfering with production
 """
 
 import asyncio
@@ -38,7 +39,7 @@ LIVEKIT_URL = os.getenv('LIVEKIT_URL', 'ws://livekit-server:7880')
 LIVEKIT_API_KEY = os.getenv('LIVEKIT_API_KEY', 'devkey')
 LIVEKIT_API_SECRET = os.getenv('LIVEKIT_API_SECRET', 'secret')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379')
-FRAME_SAMPLE_INTERVAL = float(os.getenv('FRAME_SAMPLE_INTERVAL', '0.2'))  # 5 FPS for real-time feel
+FRAME_SAMPLE_INTERVAL = float(os.getenv('FRAME_SAMPLE_INTERVAL', '1.0'))  # 1 FPS for accurate detection
 ROOM_NAME = os.getenv('ROOM_NAME', 'geome-hackathon')
 
 # Initialize clients
@@ -74,19 +75,6 @@ class YOLOPersonAnalyzer:
             # Get original frame dimensions
             original_height, original_width = frame.shape[:2]
 
-            # BLACK FRAME DETECTION: Skip YOLO on black/frozen frames
-            # Calculate mean luminance across all channels
-            mean_luminance = np.mean(frame)
-            if mean_luminance < 10:  # Very dark/black frame (0-10 out of 255)
-                logger.warning(f"⚫ Black frame detected (luminance={mean_luminance:.1f}), skipping YOLO")
-                return {
-                    'score': 0.0,
-                    'person_percentage': 0.0,
-                    'person_count': 0,
-                    'reason': 'Black/inactive frame',
-                    'detections': []
-                }
-
             # CRITICAL FIX: Upscale small frames for better YOLO detection
             # Small frames (< 320px) cause YOLO to miss people
             # We resize to 640x640 for optimal detection, then scale coordinates back
@@ -104,11 +92,11 @@ class YOLOPersonAnalyzer:
                 scale_y = 1.0
 
             # Run YOLO inference on properly-sized frame
-            # conf=0.25 (Standard threshold for accurate person detection)
+            # conf=0.15 (VERY LOW for maximum person detection sensitivity)
             # iou=0.45 (NMS threshold - Ultralytics standard)
             # max_det=300 (maximum detections)
             # classes=[0] - ONLY detect people (class 0), ignore all other objects
-            results = self.model(inference_frame, conf=0.25, iou=0.45, max_det=300, classes=[0], verbose=False)
+            results = self.model(inference_frame, conf=0.15, iou=0.45, max_det=300, classes=[0], verbose=False)
 
             # Calculate original frame area (for coverage percentage)
             frame_area = original_height * original_width
@@ -167,7 +155,7 @@ class YOLOPersonAnalyzer:
                 reason = f"No people detected"
 
             # DETAILED LOGGING for debugging
-            logger.info(f"🎯 YOLO RESULT: {reason}, score={normalized_score:.3f}")
+            logger.info(f"🎯 YOLO DEV RESULT: {reason}, score={normalized_score:.3f}")
             logger.info(f"   📐 Frame: {original_width}x{original_height}, Detections: {total_objects}")
             if person_count > 0:
                 logger.info(f"   👤 Found {person_count} person(s) covering {person_percentage:.1f}% of frame")
@@ -181,7 +169,7 @@ class YOLOPersonAnalyzer:
                 'person_percentage': person_percentage,
                 'person_count': person_count,
                 'reason': reason,
-                'detections': detections  # NEW: Include full detection data
+                'detections': detections  # Include full detection data
             }
 
         except Exception as e:
@@ -195,120 +183,10 @@ class YOLOPersonAnalyzer:
             }
 
 
-class VideoAnalyzer:
-    """Analyzes video frames using OpenAI Vision API"""
-
-    ANALYSIS_PROMPT = """Analyze this video frame and rate the level of interest/engagement on a scale of 0.0 to 1.0.
-
-Scoring Guidelines:
-- 0.9-1.0: Exceptional - Multiple people, dynamic action, clear engagement
-- 0.8-0.9: High interest - Speaking, gesturing, visible emotions
-- 0.6-0.8: Good interest - People visible, some movement
-- 0.4-0.6: Moderate - People present but static, low energy
-- 0.2-0.4: Low interest - Distant people, minimal activity
-- 0.0-0.2: No interest - Empty scene, static background
-
-Consider:
-1. Number of people visible
-2. Engagement level (speaking, gesturing, eye contact)
-3. Movement and dynamics
-4. Composition and framing
-5. Context (meeting, presentation, casual)
-
-Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
-{"score": 0.75, "reason": "Brief description of what you see"}"""
-
-    def __init__(self):
-        self.client = openai_client
-        logger.info(f"VideoAnalyzer initialized with model: {OPENAI_MODEL}")
-
-    async def analyze_frame(self, frame: np.ndarray) -> Dict[str, any]:
-        """
-        Analyze a video frame and return engagement score
-
-        Args:
-            frame: OpenCV frame (numpy array)
-
-        Returns:
-            Dict with 'score' (float 0.0-1.0) and 'reason' (str)
-        """
-        try:
-            # Convert frame to JPEG with optimization
-            # Resize to 640x480 to reduce token usage
-            frame_resized = cv2.resize(frame, (640, 480))
-
-            # Encode as JPEG with 80% quality
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
-            _, buffer = cv2.imencode('.jpg', frame_resized, encode_param)
-
-            # Convert to base64
-            base64_image = base64.b64encode(buffer).decode('utf-8')
-
-            logger.debug(f"Analyzing frame: {frame_resized.shape}, {len(base64_image)} bytes")
-
-            # Call OpenAI Vision API
-            response = await self.client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": self.ANALYSIS_PROMPT},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}",
-                                    "detail": "low"  # Use low detail for faster/cheaper analysis
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=100,
-                temperature=0.3  # Lower temperature for more consistent scoring
-            )
-
-            # Parse response
-            content = response.choices[0].message.content.strip()
-
-            # Remove markdown code blocks if present
-            if content.startswith('```'):
-                content = content.split('\n', 1)[1]
-                content = content.rsplit('\n', 1)[0]
-                if content.startswith('json'):
-                    content = content[4:].strip()
-
-            result = json.loads(content)
-
-            # Validate response
-            if 'score' not in result or 'reason' not in result:
-                raise ValueError(f"Invalid response format: {result}")
-
-            # Ensure score is in valid range
-            score = float(result['score'])
-            if not 0.0 <= score <= 1.0:
-                logger.warning(f"Score {score} out of range, clamping to [0.0, 1.0]")
-                score = max(0.0, min(1.0, score))
-
-            logger.info(f"Analysis complete: score={score:.2f}, reason={result['reason']}")
-
-            return {
-                'score': score,
-                'reason': result['reason']
-            }
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse OpenAI response: {e}, content: {content}")
-            return {'score': 0.5, 'reason': 'Analysis failed (JSON parse error)'}
-        except Exception as e:
-            logger.error(f"Frame analysis error: {e}", exc_info=True)
-            return {'score': 0.5, 'reason': f'Analysis failed: {str(e)}'}
-
-
 class LiveKitVideoWorker:
     """Connects to LiveKit room and processes video tracks"""
 
-    def __init__(self, analyzer: VideoAnalyzer, redis_client: redis.Redis):
+    def __init__(self, analyzer: YOLOPersonAnalyzer, redis_client: redis.Redis):
         self.analyzer = analyzer
         self.redis = redis_client
         self.room = rtc.Room()
@@ -484,13 +362,6 @@ class LiveKitVideoWorker:
                     height = frame.height
                     width = frame.width
 
-                    # Skip only EXTREMELY low-resolution streams (< 100px)
-                    # Most camera feeds are 192x108 or higher
-                    if width < 100 or height < 100:
-                        logger.debug(f"⏭️  Skipping too-small frame {width}x{height} from {track_identifier}")
-                        await asyncio.sleep(FRAME_SAMPLE_INTERVAL)
-                        continue
-
                     # Convert I420 format to RGB using the frame's conversion method
                     # LiveKit frames are typically in I420 (YUV) format
                     try:
@@ -524,17 +395,12 @@ class LiveKitVideoWorker:
                     # Analyze frame
                     result = await self.analyzer.analyze_frame(frame_bgr)
 
-                    # Add frame counter to verify freshness on frontend
-                    result['frame_id'] = frame_count
-                    result['frame_size'] = f"{width}x{height}"
+                    # Publish score to Redis using participant ID
+                    # Frontend looks up scores by participant identity
+                    score_id = participant_id
+                    await self.publish_score(score_id, result, track_name=track_name)
 
-                    # CRITICAL FIX: Use track_name as unique identifier (not participant_id)
-                    # This ensures each camera gets its own score instead of sharing
-                    # If no track_name, use trackSid for uniqueness
-                    score_id = track_name if track_name else track_sid
-                    await self.publish_score(score_id, result, track_name=track_name, track_sid=track_sid)
-
-                    # Wait before processing next frame
+                    # Wait before processing next frame (1 FPS = 1 second interval)
                     await asyncio.sleep(FRAME_SAMPLE_INTERVAL)
 
                 except Exception as e:
@@ -546,39 +412,29 @@ class LiveKitVideoWorker:
         except Exception as e:
             logger.error(f"Fatal error in video processing for {track_identifier}: {e}", exc_info=True)
 
-    async def publish_score(self, score_id: str, result: Dict[str, any], track_name: str = "", track_sid: str = ""):
-        """Publish score and detection data to Redis pub/sub"""
+    async def publish_score(self, score_id: str, result: Dict[str, any], track_name: str = ""):
+        """Publish score and detection data to Redis pub/sub (YOLO DEV channel)"""
         try:
             display_name = track_name if track_name else score_id
 
             message = {
-                'type': 'score',
+                'type': 'yolo-dev-score',  # Different type for YOLO DEV
                 'payload': {
                     'cam_id': score_id,
                     'camId': score_id,
                     'score': result['score'],
                     'reason': result['reason'],
                     'timestamp': int(time.time() * 1000),
-                    'track_name': track_name,  # Include track name for better identification
-                    'track_sid': track_sid,  # Include trackSid for frontend mapping
-                    'detections': result.get('detections', []),  # Include detection bounding boxes
-                    'frame_id': result.get('frame_id', 0),  # Frame counter for freshness verification
-                    'frame_size': result.get('frame_size', 'unknown')  # Frame dimensions
+                    'track_name': track_name,
+                    'detections': result.get('detections', [])
                 }
             }
 
-            # Publish to Redis channel (production)
-            await self.redis.publish('scores.stream', json.dumps(message))
-
-            # ALSO publish to YOLO DEV channel with different message type
-            dev_message = {
-                'type': 'yolo-dev-score',
-                'payload': message['payload']
-            }
-            await self.redis.publish('scores.yolo-dev', json.dumps(dev_message))
+            # Publish to YOLO DEV Redis channel (separate from production)
+            await self.redis.publish('scores.yolo-dev', json.dumps(message))
 
             detection_count = len(result.get('detections', []))
-            logger.info(f"📊 Published score for {display_name}: {result['score']:.2f} ({detection_count} detections)")
+            logger.info(f"📊 [YOLO DEV] Published score for {display_name}: {result['score']:.2f} ({detection_count} detections)")
 
         except Exception as e:
             logger.error(f"Failed to publish score: {e}", exc_info=True)
@@ -589,8 +445,8 @@ async def generate_worker_token() -> str:
     from livekit.api import AccessToken, VideoGrants
 
     token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
-    token.with_identity("analysis-worker")
-    token.with_name("AI Analysis Worker")
+    token.with_identity("analysis-worker-dev")  # Different identity for dev worker
+    token.with_name("AI Analysis Worker (DEV)")
     token.with_grants(VideoGrants(
         room_join=True,
         room=ROOM_NAME,
@@ -604,13 +460,14 @@ async def generate_worker_token() -> str:
 async def main():
     """Main worker loop"""
     logger.info("=" * 80)
-    logger.info("🤖 YOLO Person Detection Worker Starting")
+    logger.info("🤖 YOLO DEV - Development Person Detection Worker Starting")
     logger.info("=" * 80)
     logger.info(f"OpenAI Model: {OPENAI_MODEL} (running in background)")
     logger.info(f"LiveKit URL: {LIVEKIT_URL}")
     logger.info(f"Redis URL: {REDIS_URL}")
+    logger.info(f"Redis Channel: scores.yolo-dev (DEVELOPMENT)")
     logger.info(f"Room: {ROOM_NAME}")
-    logger.info(f"Frame Sample Interval: {FRAME_SAMPLE_INTERVAL}s")
+    logger.info(f"Frame Sample Interval: {FRAME_SAMPLE_INTERVAL}s (1 FPS)")
     logger.info(f"Ranking Method: YOLO Person Coverage Percentage")
     logger.info("=" * 80)
 
@@ -618,12 +475,8 @@ async def main():
     redis_client = await redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
     logger.info("✅ Connected to Redis")
 
-    # Initialize YOLO analyzer (used for ranking)
+    # Initialize YOLO analyzer
     analyzer = YOLOPersonAnalyzer()
-
-    # Keep AI analyzer running in background (not used for ranking, but available)
-    ai_analyzer = VideoAnalyzer()
-    logger.info("ℹ️  AI VLM analyzer initialized but not used for ranking")
 
     # Initialize LiveKit worker with YOLO analyzer
     worker = LiveKitVideoWorker(analyzer, redis_client)
@@ -634,7 +487,7 @@ async def main():
     # Connect to room
     await worker.connect(LIVEKIT_URL, token)
 
-    logger.info("🚀 Worker is running. Press Ctrl+C to stop.")
+    logger.info("🚀 YOLO DEV Worker is running. Press Ctrl+C to stop.")
 
     # Keep running
     try:
@@ -645,7 +498,7 @@ async def main():
     finally:
         await worker.room.disconnect()
         await redis_client.close()
-        logger.info("👋 Worker stopped")
+        logger.info("👋 YOLO DEV Worker stopped")
 
 
 if __name__ == "__main__":

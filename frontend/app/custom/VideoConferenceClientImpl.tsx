@@ -20,6 +20,7 @@ import { Sidebar } from '@/lib/Sidebar';
 import { LiveVideoConference } from '@/lib/LiveVideoConference';
 import { RankedView } from '@/lib/RankedView';
 import { YOLOView } from '@/lib/YOLOView';
+import { YOLODevView } from '@/lib/YOLODevView';
 import { DashboardView } from '@/lib/DashboardView';
 import { CameraAutoConnectEnhanced } from '@/lib/CameraAutoConnectEnhanced';
 import { AIScore, ScoreMessage } from '@/lib/types/ai';
@@ -41,13 +42,15 @@ export function VideoConferenceClientImpl(props: {
 
   // AI Ranking System state
   const [aiScores, setAiScores] = useState<Map<string, AIScore>>(new Map());
+  const [aiScoresYoloDev, setAiScoresYoloDev] = useState<Map<string, AIScore>>(new Map());
   const [aiConnected, setAiConnected] = useState(false);
-  const [activeView, setActiveView] = useState<'live' | 'ranked' | 'view' | 'dashboard' | 'personalize'>('live');
+  const [aiConnectedYoloDev, setAiConnectedYoloDev] = useState(false);
+  const [activeView, setActiveView] = useState<'live' | 'ranked' | 'view' | 'yolo-dev' | 'dashboard' | 'personalize'>('live');
 
   // Handle tab changes from sidebar
   const handleTabChange = (tabId: string) => {
     console.log('Tab changed to:', tabId);
-    setActiveView(tabId as 'live' | 'ranked' | 'view' | 'dashboard' | 'personalize');
+    setActiveView(tabId as 'live' | 'ranked' | 'view' | 'yolo-dev' | 'dashboard' | 'personalize');
   };
 
   const roomOptions = useMemo((): RoomOptions => {
@@ -143,6 +146,8 @@ export function VideoConferenceClientImpl(props: {
         return <RankedView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'view':
         return <YOLOView aiScores={aiScores} aiConnected={aiConnected} />;
+      case 'yolo-dev':
+        return <YOLODevView aiScores={aiScoresYoloDev} aiConnected={aiConnectedYoloDev} />;
       case 'dashboard':
         return <DashboardView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'personalize':
@@ -195,15 +200,52 @@ export function VideoConferenceClientImpl(props: {
               setAiScores(newScores);
               console.log('[WebSocket] Loaded initial scores:', newScores.size);
             } else if (message.type === 'score' && !Array.isArray(message.payload)) {
-              // Single score update
+              // Single score update (production YOLO)
               const score = message.payload as AIScore;
               const key = score.camId || score.cam_id;
-              console.log(`[WebSocket] Score update for ${key}:`, score.score, score.reason);
+              console.log(`[WebSocket] Score update for ${key}:`, score.score, `(track_name=${score.track_name}, track_sid=${score.track_sid})`);
+
+              // Store score under MULTIPLE keys for robust lookup
               setAiScores((prev) => {
                 const updated = new Map(prev);
+                // Store by primary key (camId)
                 updated.set(key, score);
+                // Also store by track_name if present
+                if (score.track_name) {
+                  updated.set(score.track_name, score);
+                }
+                // Also store by track_sid if present
+                if (score.track_sid) {
+                  updated.set(score.track_sid, score);
+                }
+                console.log(`[WebSocket] Stored score under keys: ${key}${score.track_name ? ', ' + score.track_name : ''}${score.track_sid ? ', ' + score.track_sid : ''}`);
                 return updated;
               });
+            } else if (message.type === 'yolo-dev-score' && !Array.isArray(message.payload)) {
+              // YOLO DEV score update (development backend)
+              const score = message.payload as AIScore;
+              const key = score.camId || score.cam_id;
+              console.log(`[WebSocket] YOLO DEV score update for ${key}:`, score.score, `(track_name=${score.track_name}, track_sid=${score.track_sid})`);
+
+              // Store score under MULTIPLE keys for robust lookup
+              setAiScoresYoloDev((prev) => {
+                const updated = new Map(prev);
+                // Store by primary key (camId)
+                updated.set(key, score);
+                // Also store by track_name if present
+                if (score.track_name) {
+                  updated.set(score.track_name, score);
+                }
+                // Also store by track_sid if present
+                if (score.track_sid) {
+                  updated.set(score.track_sid, score);
+                }
+                return updated;
+              });
+              // Set YOLO DEV connected flag when we receive messages
+              if (!aiConnectedYoloDev) {
+                setAiConnectedYoloDev(true);
+              }
             }
           } catch (error) {
             console.error('Error parsing AI score message:', error);

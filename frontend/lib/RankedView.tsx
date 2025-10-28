@@ -45,14 +45,19 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
           const trackName = publication.trackName || 'Video';
 
           // Try multiple score ID formats
-          // Format 1: participant_trackSid
-          // Format 2: participant.identity (YOLO backend uses this)
-          let score = aiScores.get(`${participant.identity}_${trackSid}`);
+          // Format 1: trackName (e.g., "Camera 1", "Camera 2") - NEW YOLO format
+          // Format 2: trackSid (e.g., "TR_abc123") - fallback for unnamed tracks
+          // Format 3: participant.identity - legacy format
+          let score = aiScores.get(trackName);
+          if (!score) {
+            score = aiScores.get(trackSid);
+          }
           if (!score) {
             score = aiScores.get(participant.identity);
           }
 
-          console.log(`[RankedView] Participant ${participant.identity}, track ${trackName}:`, score ? `Score ${score.score}` : 'No score');
+          console.log(`[RankedView] Track lookup: trackName="${trackName}", trackSid="${trackSid}", participant="${participant.identity}"`, score ? `✅ Score=${score.score}` : '❌ No score');
+          console.log(`[RankedView] Available score keys:`, Array.from(aiScores.keys()));
 
           tracks.push({
             participant,

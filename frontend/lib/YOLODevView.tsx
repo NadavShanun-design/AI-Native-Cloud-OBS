@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * YOLOView Component - SIMPLIFIED VERSION
- * Displays YOLO object detections from backend (no browser processing)
- * Renders bounding boxes received via WebSocket from Python YOLO backend
+ * YOLODevView Component - DEVELOPMENT VERSION
+ * Displays YOLO object detections from the DEV backend at 1 FPS
+ * Separate from production YOLO to allow experimentation without breaking existing features
+ * Listens to 'yolo-dev-score' WebSocket messages from analysis-worker-dev service
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
@@ -14,7 +15,7 @@ import { AIScoreOverlay } from './AIScoreOverlay';
 import { DetectionOverlay, DetectionBadge, PerformanceOverlay } from './yolo/DetectionOverlay';
 import styles from '../styles/YOLOView.module.css';
 
-interface YOLOViewProps {
+interface YOLODevViewProps {
   aiScores: Map<string, AIScore>;
   aiConnected: boolean;
 }
@@ -29,7 +30,7 @@ interface ParticipantWithDetections {
   detections: Detection[];
 }
 
-export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
+export function YOLODevView({ aiScores, aiConnected }: YOLODevViewProps) {
   const room = useRoomContext();
   const participants = useParticipants();
 
@@ -121,7 +122,7 @@ export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
       {/* Header */}
       <div className={styles.header}>
         <div className={styles.headerContent}>
-          <h1 className={styles.title}>YOLO Object Detection (Backend Powered)</h1>
+          <h1 className={styles.title}>YOLO DEV - Development Detection (1 FPS)</h1>
           <div className={styles.statusBadge} style={{ marginLeft: '16px' }}>
             <div
               className={styles.statusIndicator}
@@ -134,7 +135,7 @@ export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
               }}
             />
             <span style={{ fontSize: '14px', color: '#9ca3af' }}>
-              {aiConnected ? 'Backend YOLO Active' : 'Backend Disconnected'}
+              {aiConnected ? 'DEV Backend Active (1 FPS)' : 'DEV Backend Disconnected'}
             </span>
           </div>
         </div>
@@ -158,13 +159,15 @@ export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
               <span>{totalStats.vehicles} vehicles</span>
             </>
           )}
+          <span>•</span>
+          <span style={{ color: '#10b981', fontWeight: 'bold' }}>DEV MODE</span>
         </div>
       </div>
 
       {/* All videos with YOLO detection boxes */}
       {rankedParticipants.length > 0 && (
         <div className={styles.gridSection}>
-          <h2 className={styles.gridTitle}>All Videos with Detection</h2>
+          <h2 className={styles.gridTitle}>All Videos with Detection (1 FPS Processing)</h2>
           <div className={styles.grid}>
             {rankedParticipants.map((data) => (
               <VideoTile
@@ -180,10 +183,10 @@ export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
       {rankedParticipants.length === 0 && (
         <div className={styles.emptyState}>
           <h3>No videos yet</h3>
-          <p>Join with your camera or add external streams to see YOLO detections</p>
+          <p>Join with your camera or add external streams to see YOLO DEV detections (1 FPS)</p>
           {!aiConnected && (
             <p className={styles.emptyStateHelp}>
-              <strong>Note:</strong> Backend YOLO service not connected.
+              <strong>Note:</strong> YOLO DEV backend service not connected. Start the analysis-worker-dev service.
             </p>
           )}
         </div>
@@ -282,7 +285,7 @@ function VideoTile({ data }: VideoTileProps) {
 
     // Debug logging
     if (scaled.length > 0) {
-      console.log(`[YOLO] ${data.trackName}: ${scaled.length} detections`, {
+      console.log(`[YOLO DEV] ${data.trackName}: ${scaled.length} detections`, {
         native: `${videoDimensions.width}x${videoDimensions.height}`,
         display: `${displayDimensions.width}x${displayDimensions.height}`,
         scale: `${scaleX.toFixed(2)}x, ${scaleY.toFixed(2)}y`,
@@ -313,22 +316,24 @@ function VideoTile({ data }: VideoTileProps) {
         {/* Detection badge */}
         {data.detections.length > 0 && <DetectionBadge detections={data.detections} />}
 
-        {/* Performance info - backend processing */}
+        {/* Performance info - DEV backend processing */}
         <div
           style={{
             position: 'absolute',
             top: 8,
             right: 8,
-            background: 'rgba(0, 0, 0, 0.7)',
-            padding: '4px 8px',
+            background: 'rgba(16, 185, 129, 0.9)',
+            padding: '6px 10px',
             borderRadius: '4px',
-            fontSize: '11px',
-            color: '#10b981',
+            fontSize: '12px',
+            color: '#fff',
             fontFamily: 'monospace',
+            fontWeight: 'bold',
             zIndex: 20,
+            border: '2px solid #10b981',
           }}
         >
-          Backend YOLO
+          DEV YOLO (1 FPS)
         </div>
       </div>
 
@@ -360,4 +365,4 @@ function VideoTile({ data }: VideoTileProps) {
   );
 }
 
-export default YOLOView;
+export default YOLODevView;

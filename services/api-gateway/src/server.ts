@@ -51,8 +51,8 @@ interface ScoreData {
 }
 
 interface ScoreMessage {
-  type: 'score';
-  payload: ScoreData;
+  type: 'score' | 'yolo-dev-score' | 'initial';
+  payload: ScoreData | ScoreData[];
 }
 
 interface RankingEntry {
@@ -234,13 +234,13 @@ async function setupRedis(server: FastifyInstance) {
 
   server.log.info('✅ Connected to Redis');
 
-  // Subscribe to scores channel
+  // Subscribe to scores channel (production YOLO)
   await redisSubscriber.subscribe('scores.stream', (message) => {
     try {
       const scoreMessage: ScoreMessage = JSON.parse(message);
 
       if (scoreMessage.type === 'score') {
-        const { cam_id, score, reason, timestamp, detections } = scoreMessage.payload;
+        const { cam_id, score, reason, timestamp, detections } = scoreMessage.payload as ScoreData;
 
         // Update in-memory scores with detection data
         scores.set(cam_id, {
@@ -253,7 +253,9 @@ async function setupRedis(server: FastifyInstance) {
         });
 
         const detectionCount = detections ? detections.length : 0;
-        server.log.debug(`📊 Score update: ${cam_id} = ${score} (${detectionCount} detections)`);
+        server.log.info(`📊 Score update: ${cam_id} = ${score} (${detectionCount} detections)`);
+        server.log.info(`   Full payload keys: ${Object.keys(scoreMessage.payload).join(', ')}`);
+        server.log.info(`   cam_id=${cam_id}, camId=${(scoreMessage.payload as any).camId}, track_name=${(scoreMessage.payload as any).track_name}, track_sid=${(scoreMessage.payload as any).track_sid}`);
 
         // Broadcast to all WebSocket clients (includes detection data)
         const broadcastMessage = JSON.stringify(scoreMessage);
@@ -269,6 +271,32 @@ async function setupRedis(server: FastifyInstance) {
   });
 
   server.log.info('📡 Subscribed to Redis scores.stream');
+
+  // Subscribe to YOLO DEV channel (separate development channel)
+  await redisSubscriber.subscribe('scores.yolo-dev', (message) => {
+    try {
+      const scoreMessage: ScoreMessage = JSON.parse(message);
+
+      if (scoreMessage.type === 'yolo-dev-score') {
+        const { cam_id, score, reason, timestamp, detections } = scoreMessage.payload as ScoreData;
+
+        const detectionCount = detections ? detections.length : 0;
+        server.log.debug(`📊 [YOLO DEV] Score update: ${cam_id} = ${score} (${detectionCount} detections)`);
+
+        // Broadcast to all WebSocket clients with dev-specific type
+        const broadcastMessage = JSON.stringify(scoreMessage);
+        wsClients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(broadcastMessage);
+          }
+        });
+      }
+    } catch (error: any) {
+      server.log.error(`Redis YOLO DEV message parse error: ${error.message}`);
+    }
+  });
+
+  server.log.info('📡 Subscribed to Redis scores.yolo-dev (DEVELOPMENT)');
 }
 
 /**

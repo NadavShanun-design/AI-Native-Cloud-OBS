@@ -18,7 +18,9 @@ export interface AIScore {
   score: number; // 0.0 to 1.0
   reason: string;
   timestamp: number;
-  detections?: Detection[];  // NEW: Detection data from backend YOLO
+  detections?: Detection[];  // Detection data from backend YOLO
+  track_name?: string;  // Track name from LiveKit (e.g., "Camera 1")
+  track_sid?: string;   // Track SID from LiveKit (e.g., "TR_abc123")
 }
 
 export interface ScoreMessage {

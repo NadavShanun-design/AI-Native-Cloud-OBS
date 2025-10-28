@@ -41,20 +41,35 @@ export function DetectionOverlay({
     detections.forEach((det, index) => {
       const { x0, y0, x1, y1, confidence, className } = det;
 
-      // Calculate color based on confidence (gradient from red to green)
-      const colorIntensity = Math.floor(confidence * 255);
-      const red = 255 - colorIntensity;
-      const green = colorIntensity;
-      const blue = 0;
-      const color = `rgb(${red}, ${green}, ${blue})`;
+      // Use bright, highly visible colors based on class
+      let color: string;
+      let fillColor: string;
 
-      // Draw bounding box
+      if (className === 'person') {
+        // Bright cyan/blue for people
+        color = 'rgb(0, 255, 255)';
+        fillColor = 'rgba(0, 255, 255, 0.15)';
+      } else if (['car', 'truck', 'bus', 'motorcycle', 'bicycle'].includes(className)) {
+        // Bright yellow for vehicles
+        color = 'rgb(255, 255, 0)';
+        fillColor = 'rgba(255, 255, 0, 0.15)';
+      } else if (['dog', 'cat', 'bird', 'horse', 'sheep', 'cow'].includes(className)) {
+        // Bright green for animals
+        color = 'rgb(0, 255, 0)';
+        fillColor = 'rgba(0, 255, 0, 0.15)';
+      } else {
+        // Bright magenta for other objects
+        color = 'rgb(255, 0, 255)';
+        fillColor = 'rgba(255, 0, 255, 0.15)';
+      }
+
+      // Draw bounding box with thicker, more visible line
       ctx.strokeStyle = color;
       ctx.lineWidth = lineWidth;
       ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
 
       // Draw semi-transparent fill
-      ctx.fillStyle = `rgba(${red}, ${green}, ${blue}, 0.1)`;
+      ctx.fillStyle = fillColor;
       ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
 
       // Draw label
@@ -63,22 +78,32 @@ export function DetectionOverlay({
           ? `${className} ${(confidence * 100).toFixed(0)}%`
           : className;
 
-        ctx.font = '14px Arial';
+        ctx.font = 'bold 14px Arial';
         const textMetrics = ctx.measureText(label);
         const textWidth = textMetrics.width;
-        const textHeight = 16; // Approximate height
+        const textHeight = 18; // Approximate height
 
         // Ensure label stays within canvas bounds
         const labelX = Math.max(0, Math.min(x0, width - textWidth - 8));
         const labelY = Math.max(textHeight + 4, y0);
 
-        // Draw label background
+        // Draw label background with black border for better visibility
         ctx.fillStyle = color;
         ctx.fillRect(labelX, labelY - textHeight, textWidth + 8, textHeight + 4);
 
-        // Draw label text
-        ctx.fillStyle = 'white';
+        // Add black outline to label background
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(labelX, labelY - textHeight, textWidth + 8, textHeight + 4);
+
+        // Draw label text with shadow for better readability
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 3;
+        ctx.fillStyle = 'black';
         ctx.fillText(label, labelX + 4, labelY - 2);
+
+        // Reset shadow
+        ctx.shadowBlur = 0;
       }
     });
   }, [detections, width, height, showLabels, showConfidence, lineWidth]);
