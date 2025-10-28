@@ -72,6 +72,10 @@ const scores = new Map<string, RankingEntry>();
 // WebSocket clients
 const wsClients = new Set<WebSocket>();
 
+// Top-ranked camera tracking (updated every 10 seconds)
+let currentTopRanked: string | null = null;
+let lastRankingUpdate = Date.now();
+
 // Redis clients
 let redisSubscriber: RedisClientType;
 let redisPublisher: RedisClientType;
@@ -249,12 +253,12 @@ async function setupRedis(server: FastifyInstance) {
       const scoreMessage: ScoreMessage = JSON.parse(message);
 
       if (scoreMessage.type === 'score') {
-        const { cam_id, score, reason, timestamp, detections } = scoreMessage.payload as ScoreData;
+        const { cam_id, score, reason, timestamp, detections, track_name } = scoreMessage.payload as ScoreData;
 
         // Update in-memory scores with detection data
         scores.set(cam_id, {
           participantId: cam_id,
-          participantName: cam_id, // Can be enhanced with actual names
+          participantName: track_name || cam_id,
           score,
           reason,
           timestamp,
@@ -327,6 +331,44 @@ async function setupRedis(server: FastifyInstance) {
   });
 
   server.log.info('📡 Subscribed to Redis narration.stream');
+
+  // Set up 10-second ranking update interval
+  setInterval(() => {
+    const now = Date.now();
+    if (now - lastRankingUpdate >= 10000) { // 10 seconds
+      // Calculate current top-ranked camera
+      if (scores.size > 0) {
+        const sorted = Array.from(scores.entries())
+          .sort((a, b) => b[1].score - a[1].score);
+
+        const newTopRanked = sorted[0][0];
+
+        if (newTopRanked !== currentTopRanked) {
+          currentTopRanked = newTopRanked;
+          server.log.info(`🏆 [RANKING UPDATE] New #1: ${currentTopRanked} (score: ${sorted[0][1].score})`);
+
+          // Broadcast top-ranked update to all clients
+          const rankingMessage = JSON.stringify({
+            type: 'top_ranked',
+            payload: {
+              cam_id: currentTopRanked,
+              rank: 1,
+              score: sorted[0][1].score,
+              timestamp: now
+            }
+          });
+
+          wsClients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(rankingMessage);
+            }
+          });
+        }
+      }
+
+      lastRankingUpdate = now;
+    }
+  }, 1000); // Check every second, but only update every 10 seconds
 }
 
 /**
