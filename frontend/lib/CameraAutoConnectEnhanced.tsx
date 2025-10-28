@@ -11,17 +11,15 @@ interface CameraAutoConnectProps {
   showStatus?: boolean;
 }
 
-// Reolink camera configuration - TEMPORARILY DISABLED
-// Cameras 1-3 need MediaMTX config check
-// Cameras 4-6 need password reset
+// Reolink camera configuration
 const CAMERAS = [
-  // { id: 'camera_1', name: 'Camera 1', ip: '10.39.12.110', streamName: 'camera_1' },
-  // { id: 'camera_2', name: 'Camera 2', ip: '10.39.12.107', streamName: 'camera_2' },
-  // { id: 'camera_3', name: 'Camera 3', ip: '10.39.12.104', streamName: 'camera_3' },
-  // { id: 'camera_4', name: 'Camera 4', ip: '10.39.12.106', streamName: 'camera_4' },
-  // { id: 'camera_5', name: 'Camera 5', ip: '10.39.12.109', streamName: 'camera_5' },
-  // { id: 'camera_6', name: 'Camera 6', ip: '10.39.12.108', streamName: 'camera_6' },
-] as const;
+  { id: 'camera_1', name: 'Camera 1', ip: '10.39.12.110', streamName: 'camera_1' },
+  { id: 'camera_2', name: 'Camera 2', ip: '10.39.12.107', streamName: 'camera_2' },
+  { id: 'camera_3', name: 'Camera 3', ip: '10.39.12.104', streamName: 'camera_3' },
+  { id: 'camera_4', name: 'Camera 4', ip: '10.39.12.106', streamName: 'camera_4' },
+  { id: 'camera_5', name: 'Camera 5', ip: '10.39.12.109', streamName: 'camera_5' },
+  { id: 'camera_6', name: 'Camera 6', ip: '10.39.12.108', streamName: 'camera_6' },
+];
 
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000; // 5 seconds
