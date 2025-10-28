@@ -75,6 +75,9 @@ export function StreamView({ aiScores, currentNarration }: StreamViewProps) {
   const topVideoTrack = useMemo(() => {
     if (!topCamera || participants.length === 0) return null;
 
+    console.log('[StreamView] Looking for top camera:', topCamera);
+    console.log('[StreamView] Available participants:', participants.length);
+
     for (const participant of participants) {
       // Iterate through video tracks
       const videoTracks = Array.from(participant.videoTracks.values());
@@ -83,24 +86,29 @@ export function StreamView({ aiScores, currentNarration }: StreamViewProps) {
         if (publication.track) {
           // Check if this participant/track matches our top camera
           const identity = participant.identity.toLowerCase();
-          const trackName = publication.track.name?.toLowerCase() || '';
+          const trackName = publication.trackName?.toLowerCase() || publication.track.name?.toLowerCase() || '';
           const trackSid = publication.trackSid?.toLowerCase() || '';
           const topCamLower = topCamera.toLowerCase();
 
-          // Match by identity, track name, or track SID
+          console.log('[StreamView] Checking track:', { identity, trackName, trackSid, topCamLower });
+
+          // Match by identity, track name, track SID, or if topCamera IS the track SID
           if (
             identity.includes(topCamLower) ||
             trackName.includes(topCamLower) ||
             trackSid.includes(topCamLower) ||
+            topCamLower === trackSid ||
             topCamLower.includes(trackName) ||
             topCamLower.includes(identity)
           ) {
+            console.log('[StreamView] ✅ Found matching track!', trackSid);
             return publication.track;
           }
         }
       }
     }
 
+    console.log('[StreamView] ❌ No matching track found for:', topCamera);
     return null;
   }, [topCamera, participants]);
 
@@ -120,13 +128,13 @@ export function StreamView({ aiScores, currentNarration }: StreamViewProps) {
 
   return (
     <div className={styles.streamContainer}>
-      {/* Video Display */}
-      <div className={styles.videoWrapper}>
+      {/* Video Display - Full Screen */}
+      <div className={styles.videoWrapper} style={{ width: '100%', height: '100vh', position: 'relative' }}>
         {topVideoTrack ? (
           <>
             <VideoTrack
               track={topVideoTrack}
-              className={styles.videoElement}
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             />
 
             {/* Top Camera Badge */}
