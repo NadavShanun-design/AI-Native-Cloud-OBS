@@ -57,6 +57,11 @@ export function CameraAutoConnectEnhanced({ room, enabled = true, showStatus = t
       return;
     }
 
+    if (!room.localParticipant) {
+      console.log(`Cannot connect ${camera.name}: localParticipant not ready`);
+      return;
+    }
+
     if (connectedCameras.current.has(camera.id)) {
       console.log(`${camera.name} already connected, skipping`);
       return;
@@ -126,6 +131,11 @@ export function CameraAutoConnectEnhanced({ room, enabled = true, showStatus = t
             }
 
             try {
+              // Verify localParticipant exists before publishing
+              if (!room.localParticipant) {
+                throw new Error('LocalParticipant not available');
+              }
+
               // Check if this track is already published
               const existingPublications = Array.from(room.localParticipant.videoTracks.values());
               const alreadyPublished = existingPublications.some(pub =>
@@ -227,10 +237,14 @@ export function CameraAutoConnectEnhanced({ room, enabled = true, showStatus = t
   };
 
   useEffect(() => {
-    // Wait for LiveKit room to be fully established
+    // Wait for LiveKit room to be fully established and localParticipant ready
     const timer = setTimeout(() => {
-      connectAllCameras();
-    }, 2000);
+      if (room && room.localParticipant) {
+        connectAllCameras();
+      } else {
+        console.log('⏳ Waiting for room and localParticipant to be ready...');
+      }
+    }, 3000); // Increased to 3 seconds
 
     return () => {
       clearTimeout(timer);

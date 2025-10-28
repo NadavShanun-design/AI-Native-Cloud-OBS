@@ -52,6 +52,11 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
   const rankedTracks: VideoTrackWithScore[] = React.useMemo(() => {
     const tracks: VideoTrackWithScore[] = [];
 
+    // Check if room and localParticipant are ready
+    if (!room || !room.localParticipant) {
+      return tracks;
+    }
+
     // Include local participant (where cameras are published) AND remote participants
     const allParticipants = [room.localParticipant, ...participants.filter(p => p !== room.localParticipant)];
 
