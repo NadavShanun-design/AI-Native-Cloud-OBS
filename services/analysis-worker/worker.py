@@ -46,26 +46,28 @@ openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 
 class YOLOPersonAnalyzer:
-    """Analyzes video frames using YOLO to detect all objects and calculate person coverage percentage"""
+    """Analyzes video frames using MediaPipe to detect humans and calculate person coverage"""
 
     def __init__(self):
-        from ultralytics import YOLO
-        # Use YOLOv11 nano for speed - it will auto-download on first use
-        self.model = YOLO('yolo11n.pt')
+        import mediapipe as mp
 
-        # Warm up model with a dummy prediction for faster first inference
-        import numpy as np
-        dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
-        self.model(dummy_frame, verbose=False)
+        # Initialize MediaPipe Pose detector
+        self.mp_pose = mp.solutions.pose
+        self.pose = self.mp_pose.Pose(
+            static_image_mode=False,
+            model_complexity=0,  # Fastest model (0=lite, 1=full, 2=heavy)
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
 
-        logger.info("YOLOPersonAnalyzer initialized with yolo11n.pt (warmed up)")
+        logger.info("MediaPipe Pose Analyzer initialized (lite model)")
 
     async def analyze_frame(self, frame: np.ndarray) -> Dict[str, any]:
         """
-        Detect all objects and calculate person coverage percentage for ranking
+        Detect humans using MediaPipe and calculate coverage percentage
 
         Args:
-            frame: OpenCV frame (numpy array)
+            frame: OpenCV frame (numpy array) in BGR format
 
         Returns:
             Dict with 'score', 'person_percentage', 'person_count', 'reason', 'detections'
@@ -74,11 +76,10 @@ class YOLOPersonAnalyzer:
             # Get original frame dimensions
             original_height, original_width = frame.shape[:2]
 
-            # BLACK FRAME DETECTION: Skip YOLO on black/frozen frames
-            # Calculate mean luminance across all channels
+            # BLACK FRAME DETECTION
             mean_luminance = np.mean(frame)
-            if mean_luminance < 10:  # Very dark/black frame (0-10 out of 255)
-                logger.warning(f"⚫ Black frame detected (luminance={mean_luminance:.1f}), skipping YOLO")
+            if mean_luminance < 10:
+                logger.warning(f"⚫ Black frame detected (luminance={mean_luminance:.1f})")
                 return {
                     'score': 0.0,
                     'person_percentage': 0.0,
@@ -87,110 +88,94 @@ class YOLOPersonAnalyzer:
                     'detections': []
                 }
 
-            # CRITICAL FIX: Upscale small frames for better YOLO detection
-            # Small frames (< 320px) cause YOLO to miss people
-            # We resize to 640x640 for optimal detection, then scale coordinates back
-            min_dimension = min(original_height, original_width)
-            if min_dimension < 320:
-                # Upscale to 640x640 for optimal YOLO performance
-                inference_frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
-                scale_x = original_width / 640
-                scale_y = original_height / 640
-                logger.info(f"🔍 Upscaled frame from {original_width}x{original_height} to 640x640 for detection")
-            else:
-                # Frame is already good size, use as-is
-                inference_frame = frame
-                scale_x = 1.0
-                scale_y = 1.0
+            # Convert BGR to RGB for MediaPipe
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Run YOLO inference on properly-sized frame
-            # conf=0.25 (Standard threshold for accurate person detection)
-            # iou=0.45 (NMS threshold - Ultralytics standard)
-            # max_det=300 (maximum detections)
-            # classes=[0] - ONLY detect people (class 0), ignore all other objects
-            results = self.model(inference_frame, conf=0.25, iou=0.45, max_det=300, classes=[0], verbose=False)
+            # Run MediaPipe Pose detection
+            results = self.pose.process(frame_rgb)
 
-            # Calculate original frame area (for coverage percentage)
+            # Calculate frame area
             frame_area = original_height * original_width
 
-            # Initialize counters
-            total_person_area = 0
-            person_count = 0
             detections = []
+            person_count = 0
+            total_person_area = 0
 
-            # Process all detections
-            for result in results:
-                for box in result.boxes:
-                    # Get bounding box coordinates from inference frame (xyxy format)
-                    x1_inference, y1_inference, x2_inference, y2_inference = box.xyxy[0].cpu().numpy()
-                    confidence = float(box.conf[0].cpu().numpy())
-                    class_id = int(box.cls[0].cpu().numpy())
-                    class_name = self.model.names[class_id]
+            if results.pose_landmarks:
+                person_count = 1  # MediaPipe detects one person at a time
 
-                    # Scale coordinates back to original frame size
-                    x1 = x1_inference * scale_x
-                    y1 = y1_inference * scale_y
-                    x2 = x2_inference * scale_x
-                    y2 = y2_inference * scale_y
+                # Get bounding box from landmarks
+                landmarks = results.pose_landmarks.landmark
 
-                    # Store detection data with original frame coordinates
+                # Filter visible landmarks (confidence > 0.5)
+                visible_landmarks = [lm for lm in landmarks if lm.visibility > 0.5]
+
+                if len(visible_landmarks) > 10:  # Need at least 10 visible landmarks
+                    # Calculate bounding box from visible landmarks
+                    x_coords = [lm.x * original_width for lm in visible_landmarks]
+                    y_coords = [lm.y * original_height for lm in visible_landmarks]
+
+                    x1 = max(0, min(x_coords) - 20)  # Add padding
+                    y1 = max(0, min(y_coords) - 20)
+                    x2 = min(original_width, max(x_coords) + 20)
+                    y2 = min(original_height, max(y_coords) + 20)
+
+                    # Calculate person area
+                    box_width = x2 - x1
+                    box_height = y2 - y1
+                    box_area = box_width * box_height
+                    total_person_area = box_area
+
+                    # Calculate average confidence from visible landmarks
+                    avg_confidence = sum(lm.visibility for lm in visible_landmarks) / len(visible_landmarks)
+
+                    # Create detection object (YOLO-compatible format)
                     detection = {
                         'x0': float(x1),
                         'y0': float(y1),
                         'x1': float(x2),
                         'y1': float(y2),
-                        'confidence': confidence,
-                        'classId': class_id,
-                        'className': class_name
+                        'confidence': float(avg_confidence),
+                        'classId': 0,  # Keep as 0 for "person"
+                        'className': 'person',
+                        'landmarks': len(visible_landmarks)  # Extra info
                     }
                     detections.append(detection)
 
-                    # Calculate person coverage for ranking (only for person class)
-                    if class_id == 0:  # person class
-                        box_width = x2 - x1
-                        box_height = y2 - y1
-                        box_area = box_width * box_height
-                        total_person_area += box_area
-                        person_count += 1
-
-            # Calculate percentage of screen covered by people (for ranking)
+            # Calculate coverage percentage
             person_percentage = (total_person_area / frame_area) * 100 if frame_area > 0 else 0
 
-            # Normalize to 0.0-1.0 for compatibility with existing score system
+            # Normalize to 0.0-1.0
             normalized_score = min(person_percentage / 100.0, 1.0)
 
-            # Summary for reason
-            total_objects = len(detections)
+            # Generate reason
             if person_count > 0:
-                reason = f"{person_count} person(s), {person_percentage:.1f}% coverage"
+                landmark_count = detections[0]['landmarks'] if detections else 0
+                reason = f"1 person, {person_percentage:.1f}% coverage, {landmark_count} landmarks"
             else:
-                reason = f"No people detected"
+                reason = "No people detected"
 
-            # DETAILED LOGGING for debugging
-            logger.info(f"🎯 YOLO RESULT: {reason}, score={normalized_score:.3f}")
-            logger.info(f"   📐 Frame: {original_width}x{original_height}, Detections: {total_objects}")
+            # Logging
+            logger.info(f"🎯 MediaPipe RESULT: {reason}, score={normalized_score:.3f}")
+            logger.info(f"   📐 Frame: {original_width}x{original_height}")
             if person_count > 0:
-                logger.info(f"   👤 Found {person_count} person(s) covering {person_percentage:.1f}% of frame")
-                for i, det in enumerate([d for d in detections if d['classId'] == 0][:3]):  # Log first 3 people
-                    logger.info(f"      Person {i+1}: confidence={det['confidence']:.2f}, bbox=({det['x0']:.0f},{det['y0']:.0f})-({det['x1']:.0f},{det['y1']:.0f})")
-            else:
-                logger.warning(f"   ⚠️  NO PEOPLE DETECTED in {original_width}x{original_height} frame")
+                logger.info(f"   👤 Found person covering {person_percentage:.1f}% of frame")
 
             return {
                 'score': normalized_score,
                 'person_percentage': person_percentage,
                 'person_count': person_count,
                 'reason': reason,
-                'detections': detections  # NEW: Include full detection data
+                'detections': detections
             }
 
         except Exception as e:
-            logger.error(f"YOLO frame analysis error: {e}", exc_info=True)
+            logger.error(f"MediaPipe analysis error: {e}", exc_info=True)
             return {
                 'score': 0.0,
                 'person_percentage': 0.0,
                 'person_count': 0,
-                'reason': f'YOLO analysis failed: {str(e)}',
+                'reason': f'Analysis failed: {str(e)}',
                 'detections': []
             }
 
@@ -604,28 +589,28 @@ async def generate_worker_token() -> str:
 async def main():
     """Main worker loop"""
     logger.info("=" * 80)
-    logger.info("🤖 YOLO Person Detection Worker Starting")
+    logger.info("🤖 MediaPipe Person Detection Worker Starting")
     logger.info("=" * 80)
     logger.info(f"OpenAI Model: {OPENAI_MODEL} (running in background)")
     logger.info(f"LiveKit URL: {LIVEKIT_URL}")
     logger.info(f"Redis URL: {REDIS_URL}")
     logger.info(f"Room: {ROOM_NAME}")
     logger.info(f"Frame Sample Interval: {FRAME_SAMPLE_INTERVAL}s")
-    logger.info(f"Ranking Method: YOLO Person Coverage Percentage")
+    logger.info(f"Ranking Method: MediaPipe Pose Coverage Percentage")
     logger.info("=" * 80)
 
     # Initialize Redis
     redis_client = await redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
     logger.info("✅ Connected to Redis")
 
-    # Initialize YOLO analyzer (used for ranking)
-    analyzer = YOLOPersonAnalyzer()
+    # Initialize MediaPipe analyzer (used for ranking)
+    analyzer = YOLOPersonAnalyzer()  # Keep name for compatibility
 
     # Keep AI analyzer running in background (not used for ranking, but available)
     ai_analyzer = VideoAnalyzer()
     logger.info("ℹ️  AI VLM analyzer initialized but not used for ranking")
 
-    # Initialize LiveKit worker with YOLO analyzer
+    # Initialize LiveKit worker with MediaPipe analyzer
     worker = LiveKitVideoWorker(analyzer, redis_client)
 
     # Generate worker token

@@ -22,6 +22,7 @@ import { RankedView } from '@/lib/RankedView';
 import { YOLOView } from '@/lib/YOLOView';
 import { YOLODevView } from '@/lib/YOLODevView';
 import { DashboardView } from '@/lib/DashboardView';
+import { StreamView } from '@/lib/StreamView';
 import { CameraAutoConnectEnhanced } from '@/lib/CameraAutoConnectEnhanced';
 import { AIScore, ScoreMessage } from '@/lib/types/ai';
 
@@ -45,7 +46,15 @@ export function VideoConferenceClientImpl(props: {
   const [aiScoresYoloDev, setAiScoresYoloDev] = useState<Map<string, AIScore>>(new Map());
   const [aiConnected, setAiConnected] = useState(false);
   const [aiConnectedYoloDev, setAiConnectedYoloDev] = useState(false);
-  const [activeView, setActiveView] = useState<'live' | 'ranked' | 'view' | 'yolo-dev' | 'dashboard' | 'personalize'>('live');
+  const [activeView, setActiveView] = useState<'live' | 'ranked' | 'stream' | 'view' | 'yolo-dev' | 'dashboard' | 'personalize'>('live');
+
+  // Stream Narrator state
+  const [currentNarration, setCurrentNarration] = useState<{
+    cam_id: string;
+    text: string;
+    audio_url: string;
+    timestamp: number;
+  } | null>(null);
 
   // Handle tab changes from sidebar
   const handleTabChange = (tabId: string) => {
@@ -148,6 +157,8 @@ export function VideoConferenceClientImpl(props: {
         return <YOLOView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'yolo-dev':
         return <YOLODevView aiScores={aiScoresYoloDev} aiConnected={aiConnectedYoloDev} />;
+      case 'stream':
+        return <StreamView aiScores={aiScores} currentNarration={currentNarration} />;
       case 'dashboard':
         return <DashboardView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'personalize':
@@ -203,7 +214,15 @@ export function VideoConferenceClientImpl(props: {
               // Single score update (production YOLO)
               const score = message.payload as AIScore;
               const key = score.camId || score.cam_id;
-              console.log(`[WebSocket] Score update for ${key}:`, score.score, `(track_name=${score.track_name}, track_sid=${score.track_sid})`);
+              const detectionCount = score.detections?.length || 0;
+
+              console.log(`[WebSocket] 📊 Score update for ${key}:`, {
+                score: score.score,
+                track_name: score.track_name,
+                track_sid: score.track_sid,
+                detections: detectionCount,
+                detectionData: score.detections
+              });
 
               // Store score under MULTIPLE keys for robust lookup
               setAiScores((prev) => {
@@ -218,7 +237,14 @@ export function VideoConferenceClientImpl(props: {
                 if (score.track_sid) {
                   updated.set(score.track_sid, score);
                 }
-                console.log(`[WebSocket] Stored score under keys: ${key}${score.track_name ? ', ' + score.track_name : ''}${score.track_sid ? ', ' + score.track_sid : ''}`);
+
+                const storedKeys = [key];
+                if (score.track_name) storedKeys.push(score.track_name);
+                if (score.track_sid) storedKeys.push(score.track_sid);
+
+                console.log(`[WebSocket] ✓ Stored ${detectionCount} detections under keys:`, storedKeys);
+                console.log(`[WebSocket] ✓ Total aiScores entries:`, updated.size);
+
                 return updated;
               });
             } else if (message.type === 'yolo-dev-score' && !Array.isArray(message.payload)) {
@@ -246,6 +272,17 @@ export function VideoConferenceClientImpl(props: {
               if (!aiConnectedYoloDev) {
                 setAiConnectedYoloDev(true);
               }
+            } else if (message.type === 'narration' && message.payload) {
+              // Stream Narrator narration update
+              const narration = message.payload;
+              console.log(`[WebSocket] 🎙️ Narration received for cam ${narration.cam_id}:`, narration.text?.substring(0, 50));
+
+              setCurrentNarration({
+                cam_id: narration.cam_id,
+                text: narration.text,
+                audio_url: narration.audio_url,
+                timestamp: narration.timestamp || Date.now()
+              });
             }
           } catch (error) {
             console.error('Error parsing AI score message:', error);

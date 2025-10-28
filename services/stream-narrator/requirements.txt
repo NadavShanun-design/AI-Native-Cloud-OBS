@@ -1,0 +1,30 @@
+# Core
+asyncio==3.4.3
+python-dotenv==1.0.0
+
+# LiveKit
+livekit==0.11.0
+livekit-api==0.7.0
+
+# Redis
+redis==5.0.1
+aioredis==2.0.1
+
+# VLM (Moondream2)
+torch==2.1.2
+torchvision==0.16.2
+transformers==4.36.2
+accelerate==0.25.0
+einops==0.7.0
+
+# Image processing
+opencv-python-headless==4.9.0.80
+Pillow==10.2.0
+numpy==1.26.3
+pyvips==2.2.3
+
+# TTS (Piper)
+piper-tts==1.2.0
+
+# Audio processing
+wave==0.0.2

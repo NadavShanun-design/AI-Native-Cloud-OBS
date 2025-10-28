@@ -6,10 +6,12 @@
 import fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyCors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
 import { AccessToken, VideoGrant } from 'livekit-server-sdk';
 import { createClient, RedisClientType } from 'redis';
 import { WebSocket } from 'ws';
 import * as dotenv from 'dotenv';
+import * as path from 'path';
 
 dotenv.config();
 
@@ -91,6 +93,13 @@ async function createServer(): Promise<FastifyInstance> {
   });
 
   await server.register(fastifyWebsocket);
+
+  // Register static file serving for audio files
+  await server.register(fastifyStatic, {
+    root: path.join(__dirname, '../../tmp/narration_audio'),
+    prefix: '/audio/',
+    decorateReply: false
+  });
 
   return server;
 }
@@ -297,6 +306,27 @@ async function setupRedis(server: FastifyInstance) {
   });
 
   server.log.info('📡 Subscribed to Redis scores.yolo-dev (DEVELOPMENT)');
+
+  // Subscribe to narration channel (Stream Narrator)
+  await redisSubscriber.subscribe('narration.stream', (message) => {
+    try {
+      const narrationMessage = JSON.parse(message);
+
+      server.log.info(`🎙️ Narration received: ${narrationMessage.payload?.text?.substring(0, 50)}...`);
+
+      // Broadcast narration to all WebSocket clients
+      const broadcastMessage = JSON.stringify(narrationMessage);
+      wsClients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(broadcastMessage);
+        }
+      });
+    } catch (error: any) {
+      server.log.error(`Redis narration message parse error: ${error.message}`);
+    }
+  });
+
+  server.log.info('📡 Subscribed to Redis narration.stream');
 }
 
 /**

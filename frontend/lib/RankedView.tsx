@@ -24,6 +24,28 @@ interface VideoTrackWithScore {
 export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
   const room = useRoomContext();
   const participants = useParticipants();
+  const [stableScores, setStableScores] = React.useState<Map<string, AIScore>>(new Map());
+
+  // Update stable scores every 10 seconds
+  React.useEffect(() => {
+    // Initialize immediately
+    if (stableScores.size === 0 && aiScores.size > 0) {
+      setStableScores(new Map(aiScores));
+    }
+
+    // Update every 10 seconds
+    const interval = setInterval(() => {
+      if (aiScores.size > 0) {
+        console.log('🔄 Updating stable rankings (10-second interval)');
+        setStableScores(new Map(aiScores));
+      }
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(interval);
+  }, [aiScores, stableScores.size]);
+
+  // Use stable scores for ranking (updated every 10 seconds)
+  const scoresForRanking = stableScores.size > 0 ? stableScores : aiScores;
 
   // Create entries for each individual video track (not just participants)
   // This allows multiple videos from the same participant to be ranked separately
@@ -34,7 +56,7 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
     const allParticipants = [room.localParticipant, ...participants.filter(p => p !== room.localParticipant)];
 
     console.log('[RankedView] Processing participants:', allParticipants.length, '(including local)');
-    console.log('[RankedView] Available scores:', Array.from(aiScores.keys()));
+    console.log('[RankedView] Available scores:', Array.from(scoresForRanking.keys()));
 
     // Iterate through all participants (including local)
     allParticipants.forEach((participant) => {
@@ -48,16 +70,16 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
           // Format 1: trackName (e.g., "Camera 1", "Camera 2") - NEW YOLO format
           // Format 2: trackSid (e.g., "TR_abc123") - fallback for unnamed tracks
           // Format 3: participant.identity - legacy format
-          let score = aiScores.get(trackName);
+          let score = scoresForRanking.get(trackName);
           if (!score) {
-            score = aiScores.get(trackSid);
+            score = scoresForRanking.get(trackSid);
           }
           if (!score) {
-            score = aiScores.get(participant.identity);
+            score = scoresForRanking.get(participant.identity);
           }
 
           console.log(`[RankedView] Track lookup: trackName="${trackName}", trackSid="${trackSid}", participant="${participant.identity}"`, score ? `✅ Score=${score.score}` : '❌ No score');
-          console.log(`[RankedView] Available score keys:`, Array.from(aiScores.keys()));
+          console.log(`[RankedView] Available score keys:`, Array.from(scoresForRanking.keys()));
 
           tracks.push({
             participant,
@@ -85,7 +107,7 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
     console.log('[RankedView] Ranked tracks:', tracks.map(t => ({ name: t.trackName, rank: t.rank, score: t.score?.score })));
 
     return tracks;
-  }, [room.localParticipant, participants, aiScores]);
+  }, [room.localParticipant, participants, scoresForRanking]);
 
   // Top track is always rank #1, even without scores
   const topTrack = rankedTracks[0];

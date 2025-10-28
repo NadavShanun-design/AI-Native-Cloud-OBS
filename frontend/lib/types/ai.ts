@@ -23,9 +23,16 @@ export interface AIScore {
   track_sid?: string;   // Track SID from LiveKit (e.g., "TR_abc123")
 }
 
+export interface NarrationPayload {
+  cam_id: string;
+  text: string;
+  audio_url: string;
+  timestamp: number;
+}
+
 export interface ScoreMessage {
-  type: 'score' | 'initial';
-  payload: AIScore | AIScore[];
+  type: 'score' | 'initial' | 'yolo-dev-score' | 'narration';
+  payload: AIScore | AIScore[] | NarrationPayload;
 }
 
 export interface VideoUploadStatus {

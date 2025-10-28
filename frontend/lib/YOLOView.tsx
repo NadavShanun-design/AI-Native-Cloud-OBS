@@ -11,7 +11,7 @@ import { useParticipants, useRoomContext } from '@livekit/components-react';
 import { Participant } from 'livekit-client';
 import { AIScore, Detection } from './types/ai';
 import { AIScoreOverlay } from './AIScoreOverlay';
-import { DetectionOverlay, DetectionBadge, PerformanceOverlay } from './yolo/DetectionOverlay';
+import { DetectionOverlayRobust, DetectionBadgeRobust } from './yolo/DetectionOverlayRobust';
 import styles from '../styles/YOLOView.module.css';
 
 interface YOLOViewProps {
@@ -40,22 +40,64 @@ export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
     // Include local participant (where cameras are published) AND remote participants
     const allParticipants = [room.localParticipant, ...participants.filter(p => p !== room.localParticipant)];
 
+    console.log('[YOLO] Mapping participants to detections. aiScores keys:', Array.from(aiScores.keys()));
+
     allParticipants.forEach((participant) => {
       participant.videoTrackPublications.forEach((publication) => {
         if (publication.track) {
           const trackSid = publication.track.sid;
           const trackName = publication.trackName || 'Video';
 
-          // Try to get score/detections for this track
-          // Format 1: participant_trackSid
-          // Format 2: participant.identity (backend uses this)
-          let score = aiScores.get(`${participant.identity}_${trackSid}`);
+          // Try MULTIPLE matching strategies to find the score
+          // The backend stores with keys: track_name (e.g., "Camera 1"), track_sid (e.g., "TR_xxx"), camId
+          let score = null;
+
+          // Strategy 1: Try by trackName (e.g., "Camera 1")
+          score = aiScores.get(trackName);
+          if (score) {
+            console.log(`[YOLO] ✓ Found score for ${trackName} via trackName`);
+          }
+
+          // Strategy 2: Try by trackSid (e.g., "TR_xxx")
+          if (!score) {
+            score = aiScores.get(trackSid);
+            if (score) {
+              console.log(`[YOLO] ✓ Found score for ${trackName} via trackSid: ${trackSid}`);
+            }
+          }
+
+          // Strategy 3: Try by participant identity
           if (!score) {
             score = aiScores.get(participant.identity);
+            if (score) {
+              console.log(`[YOLO] ✓ Found score for ${trackName} via participant.identity: ${participant.identity}`);
+            }
+          }
+
+          // Strategy 4: Try combined key
+          if (!score) {
+            score = aiScores.get(`${participant.identity}_${trackSid}`);
+            if (score) {
+              console.log(`[YOLO] ✓ Found score for ${trackName} via combined key`);
+            }
+          }
+
+          // Log if we couldn't find a match
+          if (!score) {
+            console.warn(`[YOLO] ✗ No score found for track. Tried:`, {
+              trackName,
+              trackSid,
+              participantIdentity: participant.identity,
+              availableKeys: Array.from(aiScores.keys())
+            });
           }
 
           // Extract detections from backend score data
           const detections = score?.detections || [];
+
+          if (detections.length > 0) {
+            console.log(`[YOLO] ✓✓✓ ${trackName} HAS ${detections.length} DETECTIONS!`, detections);
+          }
 
           data.push({
             participant,
@@ -202,16 +244,22 @@ function VideoTile({ data }: VideoTileProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [videoDimensions, setVideoDimensions] = useState({ width: 0, height: 0 });
   const [displayDimensions, setDisplayDimensions] = useState({ width: 0, height: 0 });
+  const [isReady, setIsReady] = useState(false);
 
+  // Track video native dimensions
   useEffect(() => {
     if (videoRef.current && data.videoTrack) {
       const videoElement = data.videoTrack.attach(videoRef.current);
 
-      // Get video native dimensions once loaded
       const handleMetadata = () => {
+        const nativeWidth = videoElement.videoWidth;
+        const nativeHeight = videoElement.videoHeight;
+
+        console.log(`[YOLO] ${data.trackName} native dimensions: ${nativeWidth}x${nativeHeight}`);
+
         setVideoDimensions({
-          width: videoElement.videoWidth,
-          height: videoElement.videoHeight,
+          width: nativeWidth,
+          height: nativeHeight,
         });
       };
 
@@ -225,35 +273,50 @@ function VideoTile({ data }: VideoTileProps) {
         videoElement.removeEventListener('loadedmetadata', handleMetadata);
       };
     }
-  }, [data.videoTrack]);
+  }, [data.videoTrack, data.trackName]);
 
-  // Track the DISPLAYED size of the video (after CSS scaling)
+  // Track displayed dimensions (after CSS)
   useEffect(() => {
     if (!videoRef.current || !containerRef.current) return;
 
     const updateDisplaySize = () => {
-      if (videoRef.current) {
-        const rect = videoRef.current.getBoundingClientRect();
+      if (videoRef.current && containerRef.current) {
+        const videoRect = videoRef.current.getBoundingClientRect();
+        const containerRect = containerRef.current.getBoundingClientRect();
+
+        const displayWidth = Math.floor(videoRect.width);
+        const displayHeight = Math.floor(videoRect.height);
+
+        console.log(`[YOLO] ${data.trackName} display dimensions: ${displayWidth}x${displayHeight}`);
+
         setDisplayDimensions({
-          width: rect.width,
-          height: rect.height,
+          width: displayWidth,
+          height: displayHeight,
         });
+
+        // Mark as ready when we have both dimensions
+        if (displayWidth > 0 && displayHeight > 0 && videoDimensions.width > 0) {
+          setIsReady(true);
+        }
       }
     };
 
-    // Update on load and resize
+    // Update immediately and on events
+    const timer = setTimeout(updateDisplaySize, 100);
     updateDisplaySize();
-    window.addEventListener('resize', updateDisplaySize);
 
-    // Also update when video loads
+    window.addEventListener('resize', updateDisplaySize);
     const videoElement = videoRef.current;
     videoElement.addEventListener('loadeddata', updateDisplaySize);
+    videoElement.addEventListener('playing', updateDisplaySize);
 
     return () => {
+      clearTimeout(timer);
       window.removeEventListener('resize', updateDisplaySize);
       videoElement.removeEventListener('loadeddata', updateDisplaySize);
+      videoElement.removeEventListener('playing', updateDisplaySize);
     };
-  }, [data.videoTrack]);
+  }, [data.videoTrack, videoDimensions.width, data.trackName]);
 
   // Detection stats
   const personCount = data.detections.filter((d) => d.className === 'person').length;
@@ -265,70 +328,64 @@ function VideoTile({ data }: VideoTileProps) {
   ).length;
   const otherCount = data.detections.length - personCount - vehicleCount - animalCount;
 
-  // Scale detections from native video resolution to displayed resolution
-  const scaledDetections = React.useMemo(() => {
-    if (videoDimensions.width === 0 || displayDimensions.width === 0) return [];
+  // Log when detections UPDATE (not just when they exist)
+  const detectionHash = React.useMemo(() => {
+    return data.detections.map(d => `${d.x0},${d.y0},${d.x1},${d.y1}`).join('|');
+  }, [data.detections]);
 
-    const scaleX = displayDimensions.width / videoDimensions.width;
-    const scaleY = displayDimensions.height / videoDimensions.height;
-
-    const scaled = data.detections.map(det => ({
-      ...det,
-      x0: det.x0 * scaleX,
-      y0: det.y0 * scaleY,
-      x1: det.x1 * scaleX,
-      y1: det.y1 * scaleY,
-    }));
-
-    // Debug logging
-    if (scaled.length > 0) {
-      console.log(`[YOLO] ${data.trackName}: ${scaled.length} detections`, {
-        native: `${videoDimensions.width}x${videoDimensions.height}`,
-        display: `${displayDimensions.width}x${displayDimensions.height}`,
-        scale: `${scaleX.toFixed(2)}x, ${scaleY.toFixed(2)}y`,
-        sample: scaled[0]
+  React.useEffect(() => {
+    if (data.detections.length > 0) {
+      console.log(`[YOLO RENDER] ${data.trackName} rendering ${data.detections.length} detections at ${new Date().toISOString()}:`, {
+        hash: detectionHash,
+        firstBox: data.detections[0],
+        timestamp: data.score?.timestamp,
+        videoNative: videoDimensions,
+        videoDisplay: displayDimensions,
       });
     }
-
-    return scaled;
-  }, [data.detections, videoDimensions, displayDimensions, data.trackName]);
+  }, [detectionHash, data.trackName, data.score?.timestamp, videoDimensions, displayDimensions]);
 
   return (
     <div className={styles.gridTile}>
       <div ref={containerRef} className={styles.videoContainer}>
         <video ref={videoRef} className={styles.video} autoPlay playsInline muted />
 
-        {/* YOLO detection overlay - using scaled detections for displayed video size */}
-        {displayDimensions.width > 0 && scaledDetections.length > 0 && (
-          <DetectionOverlay
-            detections={scaledDetections}
-            width={displayDimensions.width}
-            height={displayDimensions.height}
+        {/* ROBUST YOLO detection overlay - key forces re-render on score update */}
+        {isReady && data.detections.length > 0 && (
+          <DetectionOverlayRobust
+            key={`overlay-${data.score?.timestamp || Date.now()}`}
+            detections={data.detections}
+            videoWidth={videoDimensions.width}
+            videoHeight={videoDimensions.height}
+            displayWidth={displayDimensions.width}
+            displayHeight={displayDimensions.height}
             showLabels={true}
             showConfidence={true}
-            lineWidth={3}
+            debug={false}
           />
         )}
 
-        {/* Detection badge */}
-        {data.detections.length > 0 && <DetectionBadge detections={data.detections} />}
+        {/* Detection count badge */}
+        {data.detections.length > 0 && <DetectionBadgeRobust detections={data.detections} />}
 
-        {/* Performance info - backend processing */}
+        {/* Status indicator */}
         <div
           style={{
             position: 'absolute',
             top: 8,
             right: 8,
-            background: 'rgba(0, 0, 0, 0.7)',
-            padding: '4px 8px',
+            background: isReady ? 'rgba(16, 185, 129, 0.9)' : 'rgba(239, 68, 68, 0.9)',
+            padding: '6px 10px',
             borderRadius: '4px',
             fontSize: '11px',
-            color: '#10b981',
+            color: 'white',
             fontFamily: 'monospace',
+            fontWeight: 'bold',
             zIndex: 20,
+            border: `2px solid ${isReady ? '#10b981' : '#ef4444'}`,
           }}
         >
-          Backend YOLO
+          {isReady ? `✓ YOLO (${data.detections.length})` : '⏳ Loading...'}
         </div>
       </div>
 

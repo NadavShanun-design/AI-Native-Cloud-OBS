@@ -90,6 +90,31 @@ services:
       - REDIS_URL=redis://redis:6379
       - PORT=3000
       - HOST=0.0.0.0
+    volumes:
+      - ./tmp/narration_audio:/tmp/narration_audio:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - cloud-obs-network
+
+  # Stream Narrator - VLM + TTS narration service
+  stream-narrator:
+    build:
+      context: ./services/stream-narrator
+      dockerfile: Dockerfile
+    container_name: cloud-obs-stream-narrator
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - FRAME_SAMPLE_INTERVAL=5
+      - TTS_VOICE_MODEL=/app/voices/en_US-lessac-medium.onnx
+      - AUDIO_OUTPUT_DIR=/tmp/narration_audio
+    volumes:
+      - ./dependencies/voices:/app/voices:ro
+      - ./tmp/narration_audio:/tmp/narration_audio
     depends_on:
       redis:
         condition: service_healthy

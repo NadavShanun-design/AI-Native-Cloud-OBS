@@ -126,6 +126,20 @@ export function CameraAutoConnectEnhanced({ room, enabled = true, showStatus = t
             }
 
             try {
+              // Check if this track is already published
+              const existingPublications = Array.from(room.localParticipant.videoTracks.values());
+              const alreadyPublished = existingPublications.some(pub =>
+                pub.track?.mediaStreamTrack?.id === videoTrack.id ||
+                pub.trackName === camera.name
+              );
+
+              if (alreadyPublished) {
+                console.log(`⚠️ [${camera.name}] Track already published, skipping`);
+                connectedCameras.current.add(camera.id);
+                updateCameraStatus(camera.id, 'connected');
+                return;
+              }
+
               // Publish camera stream to LiveKit room
               console.log(`📤 [${camera.name}] Publishing track to LiveKit...`);
               await room.localParticipant.publishTrack(videoTrack, {
@@ -138,8 +152,16 @@ export function CameraAutoConnectEnhanced({ room, enabled = true, showStatus = t
               updateCameraStatus(camera.id, 'connected');
               console.log(`✅ [${camera.name}] Successfully published to LiveKit via MediaMTX`);
             } catch (publishError) {
-              console.error(`❌ [${camera.name}] Failed to publish to LiveKit:`, publishError);
-              handleConnectionError(camera, `Publish failed: ${publishError}`);
+              const errorMsg = String(publishError);
+              // If track is already published, mark as success
+              if (errorMsg.includes('already been published')) {
+                console.log(`⚠️ [${camera.name}] Track already published (caught), marking as connected`);
+                connectedCameras.current.add(camera.id);
+                updateCameraStatus(camera.id, 'connected');
+              } else {
+                console.error(`❌ [${camera.name}] Failed to publish to LiveKit:`, publishError);
+                handleConnectionError(camera, `Publish failed: ${publishError}`);
+              }
             }
           } else {
             console.error(`❌ [${camera.name}] No video track in stream!`);
