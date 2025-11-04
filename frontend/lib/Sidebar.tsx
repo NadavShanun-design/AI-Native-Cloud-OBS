@@ -32,6 +32,7 @@ const allMenuItems: SidebarItem[] = [
   { id: 'stream', label: 'Stream', icon: <StreamIcon size={16} /> },
   { id: 'view', label: 'YOLO', icon: <ViewIcon size={16} /> },
   { id: 'yolo-dev', label: 'YOLO DEV', icon: <ViewIcon size={16} /> },
+  { id: 'vlm', label: 'VLM', icon: <ViewIcon size={16} /> },
   { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon size={16} /> },
   { id: 'personalize', label: 'Personalize', icon: <PersonalizeIcon size={16} /> },
   { id: 'external-stream', label: 'Add Stream', icon: <ExternalStreamIcon size={16} /> },

@@ -134,8 +134,28 @@ services:
     networks:
       - cloud-obs-network
 
+  # Ollama - Local VLM inference server for video analysis
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cloud-obs-ollama
+    ports:
+      - "11434:11434"  # Ollama API
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - cloud-obs-network
+    deploy:
+      resources:
+        limits:
+          memory: 12G  # Allocate 12GB RAM for VLM inference
+        reservations:
+          memory: 8G
+
 volumes:
   redis-data:
+    driver: local
+  ollama-data:
     driver: local
 
 networks:

@@ -23,6 +23,7 @@ import { YOLOView } from '@/lib/YOLOView';
 import { YOLODevView } from '@/lib/YOLODevView';
 import { DashboardView } from '@/lib/DashboardView';
 import { StreamView } from '@/lib/StreamView';
+import { VLMView } from '@/lib/VLMView';
 import { CameraAutoConnectEnhanced } from '@/lib/CameraAutoConnectEnhanced';
 import { AIScore, ScoreMessage } from '@/lib/types/ai';
 
@@ -45,7 +46,7 @@ export function VideoConferenceClientImpl(props: {
   // AI Ranking System state
   const [aiScores, setAiScores] = useState<Map<string, AIScore>>(new Map());
   const [aiConnected, setAiConnected] = useState(false);
-  const [activeView, setActiveView] = useState<'live' | 'ranked' | 'stream' | 'view' | 'yolo-dev' | 'dashboard' | 'personalize'>('live');
+  const [activeView, setActiveView] = useState<'live' | 'ranked' | 'stream' | 'view' | 'yolo-dev' | 'vlm' | 'dashboard' | 'personalize'>('live');
 
   // Stream Narrator state
   const [currentNarration, setCurrentNarration] = useState<{
@@ -58,7 +59,7 @@ export function VideoConferenceClientImpl(props: {
   // Handle tab changes from sidebar
   const handleTabChange = (tabId: string) => {
     console.log('Tab changed to:', tabId);
-    setActiveView(tabId as 'live' | 'ranked' | 'stream' | 'view' | 'yolo-dev' | 'dashboard' | 'personalize');
+    setActiveView(tabId as 'live' | 'ranked' | 'stream' | 'view' | 'yolo-dev' | 'vlm' | 'dashboard' | 'personalize');
   };
 
   const roomOptions = useMemo((): RoomOptions => {
@@ -156,6 +157,8 @@ export function VideoConferenceClientImpl(props: {
         return <YOLOView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'yolo-dev':
         return <YOLODevView aiScores={aiScores} aiConnected={aiConnected} />;
+      case 'vlm':
+        return <VLMView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'stream':
         return <StreamView aiScores={aiScores} currentNarration={currentNarration} />;
       case 'dashboard':
