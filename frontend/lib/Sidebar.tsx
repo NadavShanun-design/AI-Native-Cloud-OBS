@@ -22,9 +22,11 @@ interface SidebarProps {
   room?: Room | null;
   onTabChange?: (tabId: string) => void;
   activeTab?: string;
+  userRole?: 'admin' | 'guest'; // Add role prop
 }
 
-const defaultItems: SidebarItem[] = [
+// All menu items (admin has access to all)
+const allMenuItems: SidebarItem[] = [
   { id: 'live', label: 'Live2', icon: <LiveIcon size={16} />, isActive: true },
   { id: 'ranked', label: 'Ranked', icon: <ViewIcon size={16} /> },
   { id: 'stream', label: 'Stream', icon: <StreamIcon size={16} /> },
@@ -35,10 +37,30 @@ const defaultItems: SidebarItem[] = [
   { id: 'external-stream', label: 'Add Stream', icon: <ExternalStreamIcon size={16} /> },
 ];
 
-export function Sidebar({ className = '', isCollapsed = false, onToggle, room: propRoom, onTabChange, activeTab }: SidebarProps) {
-  const [items, setItems] = useState<SidebarItem[]>(defaultItems);
+// Guest can only access these menu items
+const guestMenuItems: SidebarItem[] = [
+  { id: 'live', label: 'Live2', icon: <LiveIcon size={16} />, isActive: true },
+  { id: 'ranked', label: 'Ranked', icon: <ViewIcon size={16} /> },
+  { id: 'view', label: 'YOLO', icon: <ViewIcon size={16} /> },
+];
+
+// Helper function to get menu items based on role
+function getMenuItemsForRole(role: 'admin' | 'guest' = 'guest'): SidebarItem[] {
+  return role === 'admin' ? allMenuItems : guestMenuItems;
+}
+
+export function Sidebar({ className = '', isCollapsed = false, onToggle, room: propRoom, onTabChange, activeTab, userRole = 'guest' }: SidebarProps) {
+  // Get menu items based on user role
+  const menuItems = getMenuItemsForRole(userRole);
+  const [items, setItems] = useState<SidebarItem[]>(menuItems);
   const [activeItem, setActiveItem] = useState(activeTab || 'live');
   const [isExternalStreamModalOpen, setIsExternalStreamModalOpen] = useState(false);
+
+  // Update items when role changes
+  React.useEffect(() => {
+    setItems(getMenuItemsForRole(userRole));
+    console.log(`[Sidebar] User role: ${userRole}, showing ${getMenuItemsForRole(userRole).length} menu items`);
+  }, [userRole]);
 
   // Use prop room if provided, otherwise try context
   const room = propRoom || null;

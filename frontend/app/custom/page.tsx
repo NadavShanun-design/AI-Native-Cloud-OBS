@@ -7,9 +7,10 @@ export default async function CustomRoomConnection(props: {
     liveKitUrl?: string;
     token?: string;
     codec?: string;
+    role?: string; // Add role parameter
   }>;
 }) {
-  const { liveKitUrl, token, codec } = await props.searchParams;
+  const { liveKitUrl, token, codec, role } = await props.searchParams;
   if (typeof liveKitUrl !== 'string') {
     return <h2>Missing LiveKit URL</h2>;
   }
@@ -20,9 +21,18 @@ export default async function CustomRoomConnection(props: {
     return <h2>Invalid codec, if defined it has to be [{videoCodecs.join(', ')}].</h2>;
   }
 
+  // Validate and set user role (default to guest for safety)
+  const userRole: 'admin' | 'guest' = role === 'admin' ? 'admin' : 'guest';
+  console.log(`[CustomRoomConnection] User role: ${userRole}`);
+
   return (
     <main data-lk-theme="default" style={{ height: '100%' }}>
-      <VideoConferenceClientImpl liveKitUrl={liveKitUrl} token={token} codec={codec} />
+      <VideoConferenceClientImpl
+        liveKitUrl={liveKitUrl}
+        token={token}
+        codec={codec}
+        userRole={userRole}
+      />
     </main>
   );
 }

@@ -21,8 +21,8 @@ function ConnectionForm() {
 
     try {
       const roomName = 'geome-hackathon'; // Fixed room name for all participants
-      
-      
+
+
       // Generate token from backend
       const response = await fetch('/api/generate-token', {
         method: 'POST',
@@ -33,6 +33,7 @@ function ConnectionForm() {
           password,
           participantName,
           roomName,
+          isGuest: false, // Admin login
         }),
       });
 
@@ -42,8 +43,47 @@ function ConnectionForm() {
         throw new Error(data.error || 'Failed to generate token');
       }
 
-      // Redirect to room with generated token
-      router.push(`/custom/?liveKitUrl=wss://geo-yjl7q4ad.livekit.cloud&token=${data.token}`);
+      // Redirect to room with generated token and role
+      router.push(`/custom/?liveKitUrl=wss://geo-yjl7q4ad.livekit.cloud&token=${data.token}&role=${data.role}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Connection failed');
+      setIsConnecting(false);
+    }
+  };
+
+  const onGuestLogin = async () => {
+    if (!participantName.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+
+    setError('');
+    setIsConnecting(true);
+
+    try {
+      const roomName = 'geome-hackathon';
+
+      // Generate guest token from backend (no password required)
+      const response = await fetch('/api/generate-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          participantName,
+          roomName,
+          isGuest: true, // Guest login - skip password check
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to generate token');
+      }
+
+      // Redirect to room with generated token and guest role
+      router.push(`/custom/?liveKitUrl=wss://geo-yjl7q4ad.livekit.cloud&token=${data.token}&role=${data.role}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed');
       setIsConnecting(false);
@@ -107,8 +147,8 @@ function ConnectionForm() {
         style={{ width: '100%', borderColor: 'rgba(255, 255, 255, 0.15)', marginBlock: '1rem' }}
       />
       <button
-        style={{ 
-          paddingInline: '1.25rem', 
+        style={{
+          paddingInline: '1.25rem',
           width: '100%',
           opacity: isConnecting || !participantName.trim() || !password.trim() ? 0.6 : 1,
           cursor: isConnecting || !participantName.trim() || !password.trim() ? 'not-allowed' : 'pointer',
@@ -117,7 +157,33 @@ function ConnectionForm() {
         type="submit"
         disabled={isConnecting || !participantName.trim() || !password.trim()}
       >
-        {isConnecting ? 'Connecting...' : 'Join Meeting'}
+        {isConnecting ? 'Connecting...' : 'Join as Admin'}
+      </button>
+
+      <div style={{
+        marginTop: '1rem',
+        textAlign: 'center',
+        color: 'rgba(255, 255, 255, 0.6)',
+        fontSize: '0.9rem'
+      }}>
+        or
+      </div>
+
+      <button
+        style={{
+          paddingInline: '1.25rem',
+          width: '100%',
+          marginTop: '1rem',
+          opacity: isConnecting || !participantName.trim() ? 0.6 : 1,
+          cursor: isConnecting || !participantName.trim() ? 'not-allowed' : 'pointer',
+          backgroundColor: '#6c757d',
+        }}
+        className="lk-button"
+        type="button"
+        onClick={onGuestLogin}
+        disabled={isConnecting || !participantName.trim()}
+      >
+        {isConnecting ? 'Connecting...' : 'Join as Guest'}
       </button>
 
     </form>

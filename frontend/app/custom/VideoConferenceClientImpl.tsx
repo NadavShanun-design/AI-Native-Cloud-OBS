@@ -32,6 +32,7 @@ export function VideoConferenceClientImpl(props: {
   liveKitUrl: string;
   token: string;
   codec: VideoCodec | undefined;
+  userRole?: 'admin' | 'guest'; // Add userRole prop
 }) {
   const keyProvider = useMemo(() => new ExternalE2EEKeyProvider(), []);
   const { worker, e2eePassphrase } = useSetupE2EE();
@@ -321,6 +322,7 @@ export function VideoConferenceClientImpl(props: {
           room={room}
           onTabChange={handleTabChange}
           activeTab={activeView}
+          userRole={props.userRole || 'guest'} // Pass role to Sidebar, default to guest
         />
         <div style={{
           flex: 1,
