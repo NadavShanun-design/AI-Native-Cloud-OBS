@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import styles from '../styles/Sidebar.module.css';
-import { LiveIcon, ViewIcon, PersonalizeIcon, DashboardIcon, ExternalStreamIcon } from './icons/SidebarIcons';
+import { LiveIcon, ViewIcon, PersonalizeIcon, DashboardIcon, ExternalStreamIcon, StreamIcon } from './icons/SidebarIcons';
 import { ExternalStreamModal } from './ExternalStreamModal';
 import { useRoomContext } from '@livekit/components-react';
 import { Room } from 'livekit-client';
@@ -27,7 +27,7 @@ interface SidebarProps {
 const defaultItems: SidebarItem[] = [
   { id: 'live', label: 'Live2', icon: <LiveIcon size={16} />, isActive: true },
   { id: 'ranked', label: 'Ranked', icon: <ViewIcon size={16} /> },
-  { id: 'stream', label: 'Stream', icon: <span>🎙️</span> },
+  { id: 'stream', label: 'Stream', icon: <StreamIcon size={16} /> },
   { id: 'view', label: 'YOLO', icon: <ViewIcon size={16} /> },
   { id: 'yolo-dev', label: 'YOLO DEV', icon: <ViewIcon size={16} /> },
   { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon size={16} /> },

@@ -4,6 +4,7 @@ import React from 'react';
 import { useParticipants, useRoomContext } from '@livekit/components-react';
 import { AIScore } from './types/ai';
 import { AIScoreOverlay } from './AIScoreOverlay';
+import { ClientSideYOLO } from './yolo/ClientSideYOLO';
 import { Participant } from 'livekit-client';
 import styles from '../styles/RankedView.module.css';
 
@@ -25,24 +26,37 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
   const room = useRoomContext();
   const participants = useParticipants();
   const [stableScores, setStableScores] = React.useState<Map<string, AIScore>>(new Map());
+  const [coverageScores, setCoverageScores] = React.useState<Map<string, number>>(new Map());
+
+  // Handler for coverage updates from individual video tiles
+  const handleCoverageUpdate = React.useCallback((trackSid: string, coverage: number) => {
+    setCoverageScores(prev => {
+      const updated = new Map(prev);
+      updated.set(trackSid, coverage);
+      return updated;
+    });
+  }, []);
 
   // Update stable scores every 10 seconds
   React.useEffect(() => {
-    // Initialize immediately
+    // Initialize immediately on first aiScores
     if (stableScores.size === 0 && aiScores.size > 0) {
+      console.log('🎬 Initial stable scores set:', aiScores.size, 'scores');
       setStableScores(new Map(aiScores));
     }
 
     // Update every 10 seconds
     const interval = setInterval(() => {
       if (aiScores.size > 0) {
-        console.log('🔄 Updating stable rankings (10-second interval)');
+        const timestamp = new Date().toLocaleTimeString();
+        console.log(`🔄 [${timestamp}] Updating stable rankings (10-second interval)`);
+        console.log('   Current aiScores:', Array.from(aiScores.entries()).map(([k, v]) => `${k}=${v.score.toFixed(2)}`));
         setStableScores(new Map(aiScores));
       }
     }, 10000); // 10 seconds
 
     return () => clearInterval(interval);
-  }, [aiScores, stableScores.size]);
+  }, [aiScores]); // Only depend on aiScores, not stableScores.size
 
   // Use stable scores for ranking (updated every 10 seconds)
   const scoresForRanking = stableScores.size > 0 ? stableScores : aiScores;
@@ -71,20 +85,19 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
           const trackSid = publication.track.sid;
           const trackName = publication.trackName || 'Video';
 
-          // Try multiple score ID formats
-          // Format 1: trackName (e.g., "Camera 1", "Camera 2") - NEW YOLO format
-          // Format 2: trackSid (e.g., "TR_abc123") - fallback for unnamed tracks
-          // Format 3: participant.identity - legacy format
-          let score = scoresForRanking.get(trackName);
-          if (!score) {
-            score = scoresForRanking.get(trackSid);
-          }
-          if (!score) {
-            score = scoresForRanking.get(participant.identity);
-          }
+          // Use client-side coverage score (from YOLO detection)
+          const coverage = coverageScores.get(trackSid) || 0;
 
-          console.log(`[RankedView] Track lookup: trackName="${trackName}", trackSid="${trackSid}", participant="${participant.identity}"`, score ? `✅ Score=${score.score}` : '❌ No score');
-          console.log(`[RankedView] Available score keys:`, Array.from(scoresForRanking.keys()));
+          // Create a score object using the coverage
+          const score: AIScore = {
+            cam_id: trackSid,
+            camId: trackSid,
+            score: coverage,
+            reason: coverage > 0 ? 'Person detected' : 'Analyzing...',
+            timestamp: Date.now()
+          };
+
+          console.log(`[RankedView] Track: "${trackName}" (${trackSid}) - Coverage: ${(coverage * 100).toFixed(1)}%`);
 
           tracks.push({
             participant,
@@ -112,7 +125,7 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
     console.log('[RankedView] Ranked tracks:', tracks.map(t => ({ name: t.trackName, rank: t.rank, score: t.score?.score })));
 
     return tracks;
-  }, [room.localParticipant, participants, scoresForRanking]);
+  }, [room.localParticipant, participants, coverageScores]);
 
   // Top track is always rank #1, even without scores
   const topTrack = rankedTracks[0];
@@ -148,32 +161,11 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
             <span>Top Ranked - #{topTrack.rank}</span>
           </div>
           <div className={styles.topParticipant}>
-            <div className={styles.videoContainer}>
-              <video
-                ref={(el) => {
-                  if (el && topTrack.videoTrack) {
-                    // Set dimensions before attaching to prevent dimension detection error
-                    el.style.width = '100%';
-                    el.style.height = '100%';
-
-                    try {
-                      topTrack.videoTrack.attach(el);
-                    } catch (error) {
-                      // Suppress error
-                    }
-                  }
-                }}
-                className={styles.video}
-                autoPlay
-                playsInline
-                muted
-              />
-              <AIScoreOverlay
-                score={topTrack.score || { cam_id: '', camId: '', score: 0, reason: 'Analyzing...', timestamp: Date.now() }}
-                rank={topTrack.rank}
-                showReason={true}
-              />
-            </div>
+            <VideoTileWithYOLO
+              track={topTrack}
+              isTopRanked={true}
+              onCoverageUpdate={handleCoverageUpdate}
+            />
             <div className={styles.participantName}>
               {topTrack.trackName !== 'Video' ? topTrack.trackName : (topTrack.participant.name || topTrack.participant.identity)}
             </div>
@@ -194,32 +186,11 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
                   borderColor: item.rank === 2 ? '#c0c0c0' : item.rank === 3 ? '#cd7f32' : '#374151',
                 }}
               >
-                <div className={styles.videoContainer}>
-                  <video
-                    ref={(el) => {
-                      if (el && item.videoTrack) {
-                        // Set dimensions before attaching to prevent dimension detection error
-                        el.style.width = '100%';
-                        el.style.height = '100%';
-
-                        try {
-                          item.videoTrack.attach(el);
-                        } catch (error) {
-                          // Suppress error
-                        }
-                      }
-                    }}
-                    className={styles.video}
-                    autoPlay
-                    playsInline
-                    muted
-                  />
-                  <AIScoreOverlay
-                    score={item.score || { cam_id: '', camId: '', score: 0, reason: 'Analyzing...', timestamp: Date.now() }}
-                    rank={item.rank}
-                    compact
-                  />
-                </div>
+                <VideoTileWithYOLO
+                  track={item}
+                  isTopRanked={false}
+                  onCoverageUpdate={handleCoverageUpdate}
+                />
                 <div className={styles.participantInfo}>
                   <div className={styles.participantName}>
                     {item.trackName !== 'Video' ? item.trackName : (item.participant.name || item.participant.identity)}
@@ -252,6 +223,160 @@ export function RankedView({ aiScores, aiConnected }: RankedViewProps) {
           <p>Join with your camera or upload videos to see them ranked by person detection</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// Helper component for video tile with YOLO detection overlay
+interface VideoTileWithYOLOProps {
+  track: VideoTrackWithScore;
+  isTopRanked: boolean;
+  onCoverageUpdate?: (trackSid: string, coverage: number) => void;
+}
+
+function VideoTileWithYOLO({ track, isTopRanked, onCoverageUpdate }: VideoTileWithYOLOProps) {
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [videoDimensions, setVideoDimensions] = React.useState({ width: 0, height: 0 });
+  const [displayDimensions, setDisplayDimensions] = React.useState({ width: 0, height: 0 });
+  const [isReady, setIsReady] = React.useState(false);
+  const [currentCoverage, setCurrentCoverage] = React.useState(0);
+
+  // Track video native dimensions
+  React.useEffect(() => {
+    if (videoRef.current && track.videoTrack) {
+      const videoElement = videoRef.current;
+
+      // Set dimensions before attaching to prevent dimension detection error
+      videoElement.style.width = '100%';
+      videoElement.style.height = '100%';
+
+      try {
+        track.videoTrack.attach(videoElement);
+      } catch (error) {
+        // Suppress error
+      }
+
+      const handleMetadata = () => {
+        const nativeWidth = videoElement.videoWidth;
+        const nativeHeight = videoElement.videoHeight;
+
+        console.log(`[RankedView] ${track.trackName} native dimensions: ${nativeWidth}x${nativeHeight}`);
+
+        setVideoDimensions({
+          width: nativeWidth,
+          height: nativeHeight,
+        });
+      };
+
+      if (videoElement.readyState >= 2) {
+        handleMetadata();
+      } else {
+        videoElement.addEventListener('loadedmetadata', handleMetadata);
+      }
+
+      return () => {
+        videoElement.removeEventListener('loadedmetadata', handleMetadata);
+      };
+    }
+  }, [track.videoTrack, track.trackName]);
+
+  // Track displayed dimensions (after CSS)
+  React.useEffect(() => {
+    if (!videoRef.current || !containerRef.current) return;
+
+    const updateDisplaySize = () => {
+      if (videoRef.current && containerRef.current) {
+        const videoRect = videoRef.current.getBoundingClientRect();
+
+        const displayWidth = Math.floor(videoRect.width);
+        const displayHeight = Math.floor(videoRect.height);
+
+        setDisplayDimensions({
+          width: displayWidth,
+          height: displayHeight,
+        });
+
+        // Mark as ready when we have both dimensions
+        if (displayWidth > 0 && displayHeight > 0 && videoDimensions.width > 0) {
+          setIsReady(true);
+        }
+      }
+    };
+
+    // Update immediately and on events
+    const timer = setTimeout(updateDisplaySize, 100);
+    updateDisplaySize();
+
+    window.addEventListener('resize', updateDisplaySize);
+    const videoElement = videoRef.current;
+    videoElement.addEventListener('loadeddata', updateDisplaySize);
+    videoElement.addEventListener('playing', updateDisplaySize);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateDisplaySize);
+      videoElement.removeEventListener('loadeddata', updateDisplaySize);
+      videoElement.removeEventListener('playing', updateDisplaySize);
+    };
+  }, [track.videoTrack, videoDimensions.width, track.trackName]);
+
+  // Get detections from score
+  const detections = track.score?.detections || [];
+
+  // DEBUG: Log detection status
+  React.useEffect(() => {
+    console.log(`[RankedView - ${track.trackName}] Detection status:`, {
+      hasScore: !!track.score,
+      detectionCount: detections.length,
+      isReady,
+      videoDims: videoDimensions,
+      displayDims: displayDimensions,
+      score: track.score?.score,
+      detections: detections.slice(0, 2) // Log first 2 detections
+    });
+  }, [track.score, detections.length, isReady, track.trackName]);
+
+  return (
+    <div ref={containerRef} className={styles.videoContainer}>
+      <video
+        ref={videoRef}
+        className={styles.video}
+        autoPlay
+        playsInline
+        muted
+      />
+
+      {/* Client-Side YOLO detection - runs in browser */}
+      {isReady && videoRef.current && (
+        <ClientSideYOLO
+          videoElement={videoRef.current}
+          enabled={true}
+          showLabels={true}
+          showConfidence={true}
+          debug={false}
+          onCoverageUpdate={(coverage) => {
+            setCurrentCoverage(coverage);
+            if (onCoverageUpdate) {
+              onCoverageUpdate(track.trackSid, coverage);
+            }
+          }}
+        />
+      )}
+
+      {/* AI Score Overlay */}
+      <AIScoreOverlay
+        score={{
+          cam_id: track.trackSid,
+          camId: track.trackSid,
+          score: currentCoverage,
+          reason: currentCoverage > 0 ? 'Person detected' : 'Analyzing...',
+          timestamp: Date.now()
+        }}
+        rank={track.rank}
+        showReason={isTopRanked}
+        compact={!isTopRanked}
+      />
     </div>
   );
 }

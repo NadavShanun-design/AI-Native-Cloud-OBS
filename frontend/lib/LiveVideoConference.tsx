@@ -128,9 +128,14 @@ export function LiveVideoConference({
   );
 
   return (
-    <div className={styles.container} style={{ position: 'relative' }}>
-      {/* Custom grid that shows ALL video tracks including local participant cameras */}
-      <CameraGrid participantRanks={participantRanks} aiScores={effectiveScores} />
+    <div className={styles.container} style={{ position: 'relative', height: '100%' }}>
+      {/* Standard LiveKit VideoConference with controls */}
+      <VideoConference
+        chatMessageFormatter={chatMessageFormatter}
+        SettingsComponent={SettingsComponent}
+      />
+      {/* Add rank badge overlays on top of the standard video conference */}
+      <RankBadgeOverlay participantRanks={participantRanks} aiScores={effectiveScores} />
     </div>
   );
 }

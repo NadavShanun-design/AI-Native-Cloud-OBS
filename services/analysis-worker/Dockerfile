@@ -19,5 +19,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Run the worker
-CMD ["python", "worker.py"]
+# Run the dev worker
+CMD ["python", "worker-dev.py"]

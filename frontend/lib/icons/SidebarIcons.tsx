@@ -72,3 +72,18 @@ export function ExternalStreamIcon({ className = '', size = 20 }: IconProps) {
     </div>
   );
 }
+
+export function StreamIcon({ className = '', size = 20 }: IconProps) {
+  return (
+    <div className={className} style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* Microphone body */}
+        <rect x="9" y="2" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="2" fill="none"/>
+        {/* Microphone stand */}
+        <path d="M12 13v4m-4 0h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        {/* Sound waves */}
+        <path d="M6 9.5C6 5.91 8.69 3 12 3s6 2.91 6 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
+      </svg>
+    </div>
+  );
+}

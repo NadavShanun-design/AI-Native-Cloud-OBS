@@ -43,9 +43,7 @@ export function VideoConferenceClientImpl(props: {
 
   // AI Ranking System state
   const [aiScores, setAiScores] = useState<Map<string, AIScore>>(new Map());
-  const [aiScoresYoloDev, setAiScoresYoloDev] = useState<Map<string, AIScore>>(new Map());
   const [aiConnected, setAiConnected] = useState(false);
-  const [aiConnectedYoloDev, setAiConnectedYoloDev] = useState(false);
   const [activeView, setActiveView] = useState<'live' | 'ranked' | 'stream' | 'view' | 'yolo-dev' | 'dashboard' | 'personalize'>('live');
 
   // Stream Narrator state
@@ -59,7 +57,7 @@ export function VideoConferenceClientImpl(props: {
   // Handle tab changes from sidebar
   const handleTabChange = (tabId: string) => {
     console.log('Tab changed to:', tabId);
-    setActiveView(tabId as 'live' | 'ranked' | 'view' | 'yolo-dev' | 'dashboard' | 'personalize');
+    setActiveView(tabId as 'live' | 'ranked' | 'stream' | 'view' | 'yolo-dev' | 'dashboard' | 'personalize');
   };
 
   const roomOptions = useMemo((): RoomOptions => {
@@ -156,7 +154,7 @@ export function VideoConferenceClientImpl(props: {
       case 'view':
         return <YOLOView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'yolo-dev':
-        return <YOLODevView aiScores={aiScoresYoloDev} aiConnected={aiConnectedYoloDev} />;
+        return <YOLODevView aiScores={aiScores} aiConnected={aiConnected} />;
       case 'stream':
         return <StreamView aiScores={aiScores} currentNarration={currentNarration} />;
       case 'dashboard':
@@ -200,11 +198,13 @@ export function VideoConferenceClientImpl(props: {
           try {
             const message: ScoreMessage = JSON.parse(event.data);
 
+            console.log('[WebSocket] 🔵 RAW MESSAGE RECEIVED:', message);
+
             if (message.type === 'initial' && Array.isArray(message.payload)) {
               // Initial scores - replace entire map
               const newScores = new Map<string, AIScore>();
               message.payload.forEach((score: AIScore) => {
-                const key = score.camId || score.cam_id;
+                const key = score.camId || score.cam_id || 'UNKNOWN';
                 newScores.set(key, score);
                 console.log(`[WebSocket] Initial score for ${key}:`, score.score);
               });
@@ -213,65 +213,52 @@ export function VideoConferenceClientImpl(props: {
             } else if (message.type === 'score' && !Array.isArray(message.payload)) {
               // Single score update (production YOLO)
               const score = message.payload as AIScore;
-              const key = score.camId || score.cam_id;
+              const key = score.camId || score.cam_id || 'UNKNOWN';
               const detectionCount = score.detections?.length || 0;
 
-              console.log(`[WebSocket] 📊 Score update for ${key}:`, {
+              console.log(`[WebSocket] 📊 DETAILED Score update:`, {
+                rawPayload: message.payload,
+                camId: score.camId,
+                cam_id: score.cam_id,
+                resolvedKey: key,
                 score: score.score,
                 track_name: score.track_name,
                 track_sid: score.track_sid,
                 detections: detectionCount,
-                detectionData: score.detections
+                firstDetection: score.detections?.[0]
               });
 
               // Store score under MULTIPLE keys for robust lookup
               setAiScores((prev) => {
                 const updated = new Map(prev);
-                // Store by primary key (camId)
-                updated.set(key, score);
-                // Also store by track_name if present
-                if (score.track_name) {
-                  updated.set(score.track_name, score);
-                }
-                // Also store by track_sid if present
-                if (score.track_sid) {
-                  updated.set(score.track_sid, score);
+
+                // CRITICAL: Store under ALL possible identifiers
+                const keysToStore = new Set<string>();
+
+                // 1. Primary key (camId or cam_id)
+                if (key && key !== 'UNKNOWN') keysToStore.add(key);
+
+                // 2. Track name
+                if (score.track_name) keysToStore.add(score.track_name);
+
+                // 3. Track SID
+                if (score.track_sid) keysToStore.add(score.track_sid);
+
+                // 4. Fallback: if we have detections but no keys, use a wildcard
+                if (keysToStore.size === 0 && detectionCount > 0) {
+                  console.warn('[WebSocket] ⚠️ NO KEYS FOUND! Storing under wildcard "*"');
+                  keysToStore.add('*');
                 }
 
-                const storedKeys = [key];
-                if (score.track_name) storedKeys.push(score.track_name);
-                if (score.track_sid) storedKeys.push(score.track_sid);
+                // Store under all keys
+                keysToStore.forEach(k => updated.set(k, score));
 
-                console.log(`[WebSocket] ✓ Stored ${detectionCount} detections under keys:`, storedKeys);
+                console.log(`[WebSocket] ✓ Stored ${detectionCount} detections under ${keysToStore.size} keys:`, Array.from(keysToStore));
                 console.log(`[WebSocket] ✓ Total aiScores entries:`, updated.size);
+                console.log(`[WebSocket] ✓ All keys in aiScores:`, Array.from(updated.keys()));
 
                 return updated;
               });
-            } else if (message.type === 'yolo-dev-score' && !Array.isArray(message.payload)) {
-              // YOLO DEV score update (development backend)
-              const score = message.payload as AIScore;
-              const key = score.camId || score.cam_id;
-              console.log(`[WebSocket] YOLO DEV score update for ${key}:`, score.score, `(track_name=${score.track_name}, track_sid=${score.track_sid})`);
-
-              // Store score under MULTIPLE keys for robust lookup
-              setAiScoresYoloDev((prev) => {
-                const updated = new Map(prev);
-                // Store by primary key (camId)
-                updated.set(key, score);
-                // Also store by track_name if present
-                if (score.track_name) {
-                  updated.set(score.track_name, score);
-                }
-                // Also store by track_sid if present
-                if (score.track_sid) {
-                  updated.set(score.track_sid, score);
-                }
-                return updated;
-              });
-              // Set YOLO DEV connected flag when we receive messages
-              if (!aiConnectedYoloDev) {
-                setAiConnectedYoloDev(true);
-              }
             } else if (message.type === 'narration' && message.payload) {
               // Stream Narrator narration update
               const narration = message.payload;
@@ -325,7 +312,7 @@ export function VideoConferenceClientImpl(props: {
   return (
     <div className="lk-room-container" style={{ display: 'flex', height: '100vh' }}>
       <RoomContext.Provider value={room}>
-        {/* Auto-connect Reolink cameras when room is ready with status indicator */}
+        {/* Camera auto-connect enabled */}
         <CameraAutoConnectEnhanced room={isConnected ? room : null} enabled={true} showStatus={true} />
 
         <Sidebar

@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLO Test - Webcam Object Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+            font-family: 'Monaco', 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            color: #00ff00;
+            margin-bottom: 10px;
+        }
+
+        #status {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 2px solid #00ff00;
+            min-width: 400px;
+        }
+
+        #status.loading {
+            border-color: #ffaa00;
+        }
+
+        #status.error {
+            border-color: #ff0000;
+        }
+
+        #videoContainer {
+            position: relative;
+            display: inline-block;
+            border: 3px solid #00ff00;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.3);
+        }
+
+        #webcam {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #debugInfo {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border: 2px solid #00aa00;
+            font-size: 12px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .stat {
+            margin: 5px 0;
+        }
+
+        .label {
+            color: #00ff00;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 YOLO Test - Real-Time Object Detection</h1>
+
+    <div id="status" class="loading">
+        <div class="stat"><span class="label">Status:</span> <span id="statusText">Initializing...</span></div>
+        <div class="stat"><span class="label">Model:</span> <span id="modelStatus">Loading COCO-SSD...</span></div>
+        <div class="stat"><span class="label">Camera:</span> <span id="cameraStatus">Requesting access...</span></div>
+    </div>
+
+    <div id="videoContainer">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="debugInfo">
+        <div class="stat"><span class="label">FPS:</span> <span id="fps">0</span></div>
+        <div class="stat"><span class="label">Detections:</span> <span id="detections">0</span></div>
+        <div class="stat"><span class="label">Video Size:</span> <span id="videoSize">-</span></div>
+        <div class="stat"><span class="label">Canvas Size:</span> <span id="canvasSize">-</span></div>
+        <div class="stat"><span class="label">Latest Detection:</span> <span id="latestDetection">None</span></div>
+    </div>
+
+    <script>
+        let model = null;
+        let video = null;
+        let canvas = null;
+        let ctx = null;
+        let lastFrameTime = Date.now();
+        let frameCount = 0;
+
+        // Status update helper
+        function updateStatus(message, type = 'loading') {
+            const statusEl = document.getElementById('status');
+            const statusText = document.getElementById('statusText');
+
+            statusEl.className = type;
+            statusText.textContent = message;
+        }
+
+        // Load COCO-SSD model
+        async function loadModel() {
+            try {
+                updateStatus('Loading AI model...', 'loading');
+                document.getElementById('modelStatus').textContent = 'Loading...';
+
+                model = await cocoSsd.load();
+
+                document.getElementById('modelStatus').textContent = 'COCO-SSD Loaded ✓';
+                console.log('✓ Model loaded successfully');
+
+                return true;
+            } catch (error) {
+                console.error('Error loading model:', error);
+                document.getElementById('modelStatus').textContent = 'Error: ' + error.message;
+                updateStatus('Failed to load model', 'error');
+                return false;
+            }
+        }
+
+        // Initialize webcam
+        async function setupCamera() {
+            try {
+                updateStatus('Requesting camera access...', 'loading');
+                document.getElementById('cameraStatus').textContent = 'Requesting...';
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+
+                video = document.getElementById('webcam');
+                video.srcObject = stream;
+
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+
+                        // Setup canvas to match video
+                        canvas = document.getElementById('canvas');
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        ctx = canvas.getContext('2d');
+
+                        document.getElementById('cameraStatus').textContent = 'Active ✓';
+                        document.getElementById('videoSize').textContent =
+                            `${video.videoWidth}x${video.videoHeight}`;
+                        document.getElementById('canvasSize').textContent =
+                            `${canvas.width}x${canvas.height}`;
+
+                        console.log('✓ Camera started:', video.videoWidth, 'x', video.videoHeight);
+                        resolve();
+                    };
+                });
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                document.getElementById('cameraStatus').textContent = 'Error: ' + error.message;
+                updateStatus('Camera access denied', 'error');
+                throw error;
+            }
+        }
+
+        // Draw bounding boxes
+        function drawDetections(predictions) {
+            // Clear previous frame
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update detection count
+            document.getElementById('detections').textContent = predictions.length;
+
+            // Draw each detection
+            predictions.forEach((prediction, index) => {
+                const [x, y, width, height] = prediction.bbox;
+                const label = prediction.class;
+                const score = (prediction.score * 100).toFixed(0);
+
+                // Choose color based on class
+                let color = '#ff00ff'; // default magenta
+                let fillColor = 'rgba(255, 0, 255, 0.15)';
+
+                if (label === 'person') {
+                    color = '#00ff00'; // green for person
+                    fillColor = 'rgba(0, 255, 0, 0.15)';
+                } else if (['car', 'truck', 'bus', 'motorcycle', 'bicycle'].includes(label)) {
+                    color = '#ffff00'; // yellow for vehicles
+                    fillColor = 'rgba(255, 255, 0, 0.2)';
+                }
+
+                // Draw filled rectangle
+                ctx.fillStyle = fillColor;
+                ctx.fillRect(x, y, width, height);
+
+                // Draw thick border
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 4;
+                ctx.strokeRect(x, y, width, height);
+
+                // Draw label background
+                const labelText = `${label} ${score}%`;
+                ctx.font = 'bold 16px Arial';
+                const textMetrics = ctx.measureText(labelText);
+                const textWidth = textMetrics.width;
+                const textHeight = 20;
+
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y - textHeight - 4, textWidth + 10, textHeight + 4);
+
+                // Draw label text
+                ctx.fillStyle = 'black';
+                ctx.fillText(labelText, x + 5, y - 8);
+
+                // Log first detection
+                if (index === 0) {
+                    document.getElementById('latestDetection').textContent =
+                        `${label} ${score}% at (${Math.round(x)}, ${Math.round(y)}) [${Math.round(width)}x${Math.round(height)}]`;
+                }
+            });
+
+            if (predictions.length === 0) {
+                document.getElementById('latestDetection').textContent = 'None';
+            }
+        }
+
+        // Main detection loop
+        async function detectFrame() {
+            if (!model || !video.readyState === 4) {
+                requestAnimationFrame(detectFrame);
+                return;
+            }
+
+            try {
+                // Run detection
+                const predictions = await model.detect(video);
+
+                // Draw boxes
+                drawDetections(predictions);
+
+                // Calculate FPS
+                frameCount++;
+                const now = Date.now();
+                if (now - lastFrameTime >= 1000) {
+                    const fps = frameCount;
+                    document.getElementById('fps').textContent = fps;
+                    frameCount = 0;
+                    lastFrameTime = now;
+                }
+
+            } catch (error) {
+                console.error('Detection error:', error);
+            }
+
+            // Continue loop
+            requestAnimationFrame(detectFrame);
+        }
+
+        // Initialize everything
+        async function init() {
+            try {
+                // Load model
+                const modelLoaded = await loadModel();
+                if (!modelLoaded) return;
+
+                // Setup camera
+                await setupCamera();
+
+                // Start detection
+                updateStatus('Running - Detection Active!', '');
+                console.log('✓ Starting detection loop');
+                detectFrame();
+
+            } catch (error) {
+                console.error('Initialization error:', error);
+                updateStatus('Initialization failed: ' + error.message, 'error');
+            }
+        }
+
+        // Start when page loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

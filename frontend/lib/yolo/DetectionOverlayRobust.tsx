@@ -99,15 +99,15 @@ export function DetectionOverlayRobust({
           let color: string;
           let fillColor: string;
 
-          if (det.className === 'person') {
-            color = 'rgb(0, 255, 255)'; // Bright cyan for people
-            fillColor = 'rgba(0, 255, 255, 0.2)';
+          if (det.className === 'face' || det.className === 'person') {
+            color = 'rgb(0, 255, 0)'; // Bright green for faces
+            fillColor = 'rgba(0, 255, 0, 0.15)';
           } else if (['car', 'truck', 'bus', 'motorcycle', 'bicycle'].includes(det.className)) {
             color = 'rgb(255, 255, 0)'; // Yellow for vehicles
             fillColor = 'rgba(255, 255, 0, 0.2)';
           } else if (['dog', 'cat', 'bird', 'horse', 'sheep', 'cow'].includes(det.className)) {
-            color = 'rgb(0, 255, 0)'; // Green for animals
-            fillColor = 'rgba(0, 255, 0, 0.2)';
+            color = 'rgb(0, 255, 255)'; // Cyan for animals
+            fillColor = 'rgba(0, 255, 255, 0.2)';
           } else {
             color = 'rgb(255, 0, 255)'; // Magenta for others
             fillColor = 'rgba(255, 0, 255, 0.2)';

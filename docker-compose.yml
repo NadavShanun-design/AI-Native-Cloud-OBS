@@ -38,31 +38,12 @@ services:
     networks:
       - cloud-obs-network
 
-  # Analysis Worker - AI video scoring
+  # Analysis Worker - YOLO person detection for ranking
   analysis-worker:
     build:
       context: ./services/analysis-worker
       dockerfile: Dockerfile
     container_name: cloud-obs-analysis-worker
-    env_file:
-      - .env
-    environment:
-      - REDIS_URL=redis://redis:6379
-    extra_hosts:
-      - "host.docker.internal:host-gateway"  # Allow container to reach host network
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - cloud-obs-network
-
-  # Analysis Worker DEV - YOLO development/testing at 1 FPS
-  analysis-worker-dev:
-    build:
-      context: ./services/analysis-worker-dev
-      dockerfile: Dockerfile
-    container_name: cloud-obs-analysis-worker-dev
     env_file:
       - .env
     environment:

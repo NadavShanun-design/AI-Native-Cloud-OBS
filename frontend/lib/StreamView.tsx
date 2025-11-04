@@ -1,12 +1,12 @@
 /**
  * StreamView Component
- * Displays the #1 ranked video with AI narration (text overlay + audio)
+ * Displays ONLY the #1 ranked video with YOLO detection overlay
+ * Updates every 10 seconds based on person coverage percentage
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Track } from 'livekit-client';
-import { VideoTrack, useParticipants } from '@livekit/components-react';
-import AudioPlayer from './AudioPlayer';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useParticipants, useRoomContext } from '@livekit/components-react';
+import { ClientSideYOLO } from './yolo/ClientSideYOLO';
 import styles from '../styles/StreamView.module.css';
 
 interface AIScore {
@@ -31,126 +31,170 @@ interface StreamViewProps {
 }
 
 export function StreamView({ aiScores, currentNarration }: StreamViewProps) {
-  const [audioVolume, setAudioVolume] = useState(0.8);
-  const [showNarration, setShowNarration] = useState(false);
-  const [stableTopCamera, setStableTopCamera] = useState<string | null>(null);
+  const room = useRoomContext();
   const participants = useParticipants();
+  const [coverageScores, setCoverageScores] = useState<Map<string, number>>(new Map());
+  const [stableTopTrack, setStableTopTrack] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isVideoReady, setIsVideoReady] = useState(false);
+  const lastAttachedTrackSid = useRef<string | null>(null);
 
-  // Find current #1 ranked camera (instant)
-  const currentTopCamera = useMemo(() => {
-    if (aiScores.size === 0) return null;
-
-    const sorted = Array.from(aiScores.entries())
-      .sort((a, b) => b[1].score - a[1].score);
-
-    if (sorted.length > 0) {
-      return sorted[0][0]; // Return cam_id of top camera
-    }
-
-    return null;
-  }, [aiScores]);
-
-  // Update stable top camera only every 10 seconds
+  // Update stable top track every 10 seconds based on person coverage
   useEffect(() => {
-    // Set initial top camera immediately
-    if (!stableTopCamera && currentTopCamera) {
-      setStableTopCamera(currentTopCamera);
+    // Initialize immediately
+    if (!stableTopTrack && coverageScores.size > 0) {
+      const sorted = Array.from(coverageScores.entries()).sort((a, b) => b[1] - a[1]);
+      if (sorted.length > 0) {
+        setStableTopTrack(sorted[0][0]);
+        console.log(`[StreamView] 🎬 Initial top track: ${sorted[0][0]} (${(sorted[0][1] * 100).toFixed(1)}%)`);
+      }
     }
 
     // Update every 10 seconds
     const interval = setInterval(() => {
-      if (currentTopCamera && currentTopCamera !== stableTopCamera) {
-        console.log(`🏆 Ranking switched from ${stableTopCamera} to ${currentTopCamera}`);
-        setStableTopCamera(currentTopCamera);
+      if (coverageScores.size > 0) {
+        const sorted = Array.from(coverageScores.entries()).sort((a, b) => b[1] - a[1]);
+        if (sorted.length > 0) {
+          const newTop = sorted[0][0];
+          const currentCoverage = coverageScores.get(stableTopTrack || '') || 0;
+          const newTopCoverage = sorted[0][1];
+
+          // Hysteresis: only switch if new top is significantly better (>5% diff)
+          // This prevents rapid switching between similar coverage scores
+          if (!stableTopTrack || (newTopCoverage - currentCoverage) > 0.05 || newTop !== stableTopTrack) {
+            if (newTop !== stableTopTrack) {
+              console.log(`[StreamView] 🔄 Top track changed: ${stableTopTrack} → ${newTop} (${(sorted[0][1] * 100).toFixed(1)}%)`);
+            }
+            setStableTopTrack(newTop);
+          }
+        }
       }
     }, 10000); // 10 seconds
 
     return () => clearInterval(interval);
-  }, [currentTopCamera, stableTopCamera]);
+  }, [coverageScores, stableTopTrack]);
 
-  // Use stable camera for display
-  const topCamera = stableTopCamera;
+  // Handler for coverage updates from hidden video trackers
+  const handleCoverageUpdate = useCallback((trackSid: string, coverage: number) => {
+    setCoverageScores(prev => {
+      const updated = new Map(prev);
+      updated.set(trackSid, coverage);
+      return updated;
+    });
+  }, []);
 
-  // Get video track for top camera
-  const topVideoTrack = useMemo(() => {
-    if (!topCamera || participants.length === 0) return null;
+  // Get all video tracks for coverage tracking
+  const allVideoTracks = useMemo(() => {
+    if (!room || !room.localParticipant) return [];
 
-    console.log('[StreamView] Looking for top camera:', topCamera);
-    console.log('[StreamView] Available participants:', participants.length);
+    const allParticipants = [room.localParticipant, ...participants.filter(p => p !== room.localParticipant)];
+    const tracks: Array<{ trackSid: string; track: any; trackName: string }> = [];
 
-    for (const participant of participants) {
-      // Iterate through video tracks
-      const videoTracks = Array.from(participant.videoTracks.values());
-
-      for (const publication of videoTracks) {
+    allParticipants.forEach((participant) => {
+      participant.videoTrackPublications.forEach((publication) => {
         if (publication.track) {
-          // Check if this participant/track matches our top camera
-          const identity = participant.identity.toLowerCase();
-          const trackName = publication.trackName?.toLowerCase() || publication.track.name?.toLowerCase() || '';
-          const trackSid = publication.trackSid?.toLowerCase() || '';
-          const topCamLower = topCamera.toLowerCase();
-
-          console.log('[StreamView] Checking track:', { identity, trackName, trackSid, topCamLower });
-
-          // Match by identity, track name, track SID, or if topCamera IS the track SID
-          if (
-            identity.includes(topCamLower) ||
-            trackName.includes(topCamLower) ||
-            trackSid.includes(topCamLower) ||
-            topCamLower === trackSid ||
-            topCamLower.includes(trackName) ||
-            topCamLower.includes(identity)
-          ) {
-            console.log('[StreamView] ✅ Found matching track!', trackSid);
-            return publication.track;
-          }
+          tracks.push({
+            trackSid: publication.track.sid,
+            track: publication.track,
+            trackName: publication.trackName || 'Video'
+          });
         }
+      });
+    });
+
+    return tracks;
+  }, [room, room?.localParticipant, participants]);
+
+  // Get the top video track
+  const topVideoTrack = useMemo(() => {
+    if (!stableTopTrack) return null;
+
+    const track = allVideoTracks.find(t => t.trackSid === stableTopTrack);
+    return track || null;
+  }, [stableTopTrack, allVideoTracks]);
+
+  // Attach/detach track to video element ONLY when topVideoTrack changes
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement || !topVideoTrack) return;
+
+    // Don't re-attach if it's already the same track
+    if (lastAttachedTrackSid.current === topVideoTrack.trackSid) {
+      console.log(`[StreamView] ✅ Track ${topVideoTrack.trackName} already attached, skipping`);
+      return;
+    }
+
+    console.log(`[StreamView] 🎥 Attaching track: ${topVideoTrack.trackName} (${topVideoTrack.trackSid})`);
+
+    // Detach previous track if any
+    if (lastAttachedTrackSid.current && videoElement.srcObject) {
+      const oldTracks = allVideoTracks.find(t => t.trackSid === lastAttachedTrackSid.current);
+      if (oldTracks) {
+        console.log(`[StreamView] 🗑️ Detaching old track: ${oldTracks.trackName}`);
+        oldTracks.track.detach(videoElement);
       }
     }
 
-    console.log('[StreamView] ❌ No matching track found for:', topCamera);
-    return null;
-  }, [topCamera, participants]);
+    // Attach new track
+    topVideoTrack.track.attach(videoElement);
+    lastAttachedTrackSid.current = topVideoTrack.trackSid;
 
-  // Show narration text with fade effect
-  useEffect(() => {
-    if (currentNarration) {
-      setShowNarration(true);
+    // Mark as ready when video starts playing
+    const handlePlaying = () => {
+      console.log(`[StreamView] ▶️ Video playing: ${topVideoTrack.trackName}`);
+      setIsVideoReady(true);
+    };
 
-      // Auto-hide after 8 seconds
-      const timer = setTimeout(() => {
-        setShowNarration(false);
-      }, 8000);
+    const handleLoadedData = () => {
+      console.log(`[StreamView] 📊 Video loaded: ${topVideoTrack.trackName}`);
+    };
 
-      return () => clearTimeout(timer);
-    }
-  }, [currentNarration]);
+    videoElement.addEventListener('playing', handlePlaying);
+    videoElement.addEventListener('loadeddata', handleLoadedData);
+
+    return () => {
+      videoElement.removeEventListener('playing', handlePlaying);
+      videoElement.removeEventListener('loadeddata', handleLoadedData);
+      // Don't detach on cleanup - let the next track switch handle it
+    };
+  }, [topVideoTrack?.trackSid]); // Only re-run when track SID changes
 
   return (
     <div className={styles.streamContainer}>
-      {/* Video Display - Full Screen */}
-      <div className={styles.videoWrapper} style={{ width: '100%', height: '100vh', position: 'relative' }}>
-        {topVideoTrack ? (
+      {/* Single video element for stable playback */}
+      <div className={styles.videoWrapper}>
+        {allVideoTracks.length > 0 ? (
           <>
-            <VideoTrack
-              track={topVideoTrack}
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={styles.videoElement}
             />
 
-            {/* Top Camera Badge */}
-            <div className={styles.topBadge}>
-              <span className={styles.badgeIcon}>🏆</span>
-              <span className={styles.badgeText}>
-                {topCamera} - Top Ranked
-              </span>
-            </div>
+            {/* YOLO Detection Overlay */}
+            {isVideoReady && videoRef.current && (
+              <div className={styles.yoloOverlay}>
+                <ClientSideYOLO
+                  videoElement={videoRef.current}
+                  enabled={true}
+                  showLabels={true}
+                  showConfidence={true}
+                  debug={false}
+                />
+              </div>
+            )}
 
-            {/* Text Overlay */}
-            {showNarration && currentNarration && (
-              <div className={`${styles.textOverlay} ${styles.fadeIn}`}>
-                <p className={styles.narrationText}>
-                  {currentNarration.text}
-                </p>
+            {/* Debug info overlay */}
+            {topVideoTrack && (
+              <div className={styles.statusOverlay}>
+                <span className={styles.cameraName}>
+                  🏆 {topVideoTrack.trackName}
+                </span>
+                <span className={styles.coverage}>
+                  {((coverageScores.get(topVideoTrack.trackSid) || 0) * 100).toFixed(0)}% coverage
+                </span>
               </div>
             )}
           </>
@@ -158,55 +202,70 @@ export function StreamView({ aiScores, currentNarration }: StreamViewProps) {
           <div className={styles.placeholder}>
             <div className={styles.placeholderContent}>
               <div className={styles.spinner}></div>
-              <p>Waiting for top-ranked video...</p>
-              {topCamera && (
-                <p className={styles.placeholderHint}>
-                  Looking for: {topCamera}
-                </p>
-              )}
+              <p>Waiting for video streams...</p>
+              <p className={styles.placeholderHint}>
+                No cameras connected. Check camera auto-connect status above.
+              </p>
             </div>
           </div>
         )}
       </div>
 
-      {/* Audio Player (hidden, auto-plays) */}
-      {currentNarration && (
-        <AudioPlayer
-          src={`http://localhost:3000${currentNarration.audio_url}`}
-          volume={audioVolume}
-          autoPlay
+      {/* Hidden video trackers for coverage scoring */}
+      <div style={{ display: 'none' }}>
+        {allVideoTracks.map((trackData) => (
+          <HiddenVideoTracker
+            key={trackData.trackSid}
+            trackSid={trackData.trackSid}
+            trackName={trackData.trackName}
+            videoTrack={trackData.track}
+            onCoverageUpdate={handleCoverageUpdate}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Hidden component that tracks video and reports coverage
+interface HiddenVideoTrackerProps {
+  trackSid: string;
+  trackName: string;
+  videoTrack: any;
+  onCoverageUpdate: (trackSid: string, coverage: number) => void;
+}
+
+function HiddenVideoTracker({ trackSid, trackName, videoTrack, onCoverageUpdate }: HiddenVideoTrackerProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Attach track to video element
+  useEffect(() => {
+    if (!videoRef.current || !videoTrack) return;
+
+    const videoElement = videoRef.current;
+    videoTrack.attach(videoElement);
+
+    return () => {
+      videoTrack.detach(videoElement);
+    };
+  }, [videoTrack]);
+
+  return (
+    <>
+      <video ref={videoRef} autoPlay playsInline muted style={{ width: 160, height: 90 }} />
+      {videoRef.current && (
+        <ClientSideYOLO
+          videoElement={videoRef.current}
+          enabled={true}
+          showLabels={false}
+          showConfidence={false}
+          debug={false}
+          onCoverageUpdate={(coverage) => {
+            onCoverageUpdate(trackSid, coverage);
+          }}
         />
       )}
-
-      {/* Volume Control */}
-      <div className={styles.controls}>
-        <div className={styles.volumeControl}>
-          <span className={styles.volumeIcon}>🔊</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.1"
-            value={audioVolume}
-            onChange={(e) => setAudioVolume(parseFloat(e.target.value))}
-            className={styles.volumeSlider}
-          />
-          <span className={styles.volumeValue}>
-            {Math.round(audioVolume * 100)}%
-          </span>
-        </div>
-      </div>
-
-      {/* Debug Info (development only) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className={styles.debugInfo}>
-          <p><strong>Top Camera:</strong> {topCamera || 'None'}</p>
-          <p><strong>Score:</strong> {topCamera && aiScores.get(topCamera)?.score.toFixed(2)}</p>
-          <p><strong>Narration:</strong> {currentNarration ? 'Active' : 'None'}</p>
-          <p><strong>Participants:</strong> {participants.length}</p>
-        </div>
-      )}
-    </div>
+    </>
   );
 }
 

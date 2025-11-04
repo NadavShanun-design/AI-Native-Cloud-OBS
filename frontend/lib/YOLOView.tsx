@@ -11,7 +11,7 @@ import { useParticipants, useRoomContext } from '@livekit/components-react';
 import { Participant } from 'livekit-client';
 import { AIScore, Detection } from './types/ai';
 import { AIScoreOverlay } from './AIScoreOverlay';
-import { DetectionOverlayRobust, DetectionBadgeRobust } from './yolo/DetectionOverlayRobust';
+import { ClientSideYOLO } from './yolo/ClientSideYOLO';
 import styles from '../styles/YOLOView.module.css';
 
 interface YOLOViewProps {
@@ -48,7 +48,7 @@ export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
           const trackSid = publication.track.sid;
           const trackName = publication.trackName || 'Video';
 
-          // Try MULTIPLE matching strategies to find the score
+          // Try MULTIPLE matching strategies to find the score (COMPREHENSIVE)
           // The backend stores with keys: track_name (e.g., "Camera 1"), track_sid (e.g., "TR_xxx"), camId
           let score = null;
 
@@ -82,6 +82,20 @@ export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
             }
           }
 
+          // Strategy 5: Try wildcard match (fallback when backend can't identify track)
+          if (!score) {
+            score = aiScores.get('*');
+            if (score) {
+              console.log(`[YOLO] ✓ Found score for ${trackName} via wildcard (*)`);
+            }
+          }
+
+          // Strategy 6: If only ONE score exists and we have no match, use it (single-camera scenario)
+          if (!score && aiScores.size === 1) {
+            score = Array.from(aiScores.values())[0];
+            console.log(`[YOLO] ✓ Found score for ${trackName} via single-score-fallback`);
+          }
+
           // Log if we couldn't find a match
           if (!score) {
             console.warn(`[YOLO] ✗ No score found for track. Tried:`, {
@@ -90,6 +104,8 @@ export function YOLOView({ aiScores, aiConnected }: YOLOViewProps) {
               participantIdentity: participant.identity,
               availableKeys: Array.from(aiScores.keys())
             });
+          } else {
+            console.log(`[YOLO] 🔍 Available aiScores keys:`, Array.from(aiScores.keys()));
           }
 
           // Extract detections from backend score data
@@ -350,23 +366,16 @@ function VideoTile({ data }: VideoTileProps) {
       <div ref={containerRef} className={styles.videoContainer}>
         <video ref={videoRef} className={styles.video} autoPlay playsInline muted />
 
-        {/* ROBUST YOLO detection overlay - key forces re-render on score update */}
-        {isReady && data.detections.length > 0 && (
-          <DetectionOverlayRobust
-            key={`overlay-${data.score?.timestamp || Date.now()}`}
-            detections={data.detections}
-            videoWidth={videoDimensions.width}
-            videoHeight={videoDimensions.height}
-            displayWidth={displayDimensions.width}
-            displayHeight={displayDimensions.height}
+        {/* Client-Side YOLO detection - runs in browser */}
+        {isReady && videoRef.current && (
+          <ClientSideYOLO
+            videoElement={videoRef.current}
+            enabled={true}
             showLabels={true}
             showConfidence={true}
             debug={false}
           />
         )}
-
-        {/* Detection count badge */}
-        {data.detections.length > 0 && <DetectionBadgeRobust detections={data.detections} />}
 
         {/* Status indicator */}
         <div
@@ -385,7 +394,7 @@ function VideoTile({ data }: VideoTileProps) {
             border: `2px solid ${isReady ? '#10b981' : '#ef4444'}`,
           }}
         >
-          {isReady ? `✓ YOLO (${data.detections.length})` : '⏳ Loading...'}
+          {isReady ? '✓ YOLO Active' : '⏳ Loading...'}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 """
-AI Video Analysis Worker
-Samples video frames from LiveKit streams and scores them using OpenAI GPT-4o-mini
+YOLO Person Detection Worker
+Samples video frames from LiveKit streams and ranks them by person count using YOLO
+Publishes to Redis channel (scores.stream) for main ranking system
 """
 
 import asyncio
@@ -38,7 +39,7 @@ LIVEKIT_URL = os.getenv('LIVEKIT_URL', 'ws://livekit-server:7880')
 LIVEKIT_API_KEY = os.getenv('LIVEKIT_API_KEY', 'devkey')
 LIVEKIT_API_SECRET = os.getenv('LIVEKIT_API_SECRET', 'secret')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379')
-FRAME_SAMPLE_INTERVAL = float(os.getenv('FRAME_SAMPLE_INTERVAL', '0.2'))  # 5 FPS for real-time feel
+FRAME_SAMPLE_INTERVAL = float(os.getenv('FRAME_SAMPLE_INTERVAL', '1.0'))  # 1 FPS for accurate detection
 ROOM_NAME = os.getenv('ROOM_NAME', 'geome-hackathon')
 
 # Initialize clients
@@ -46,28 +47,26 @@ openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 
 class YOLOPersonAnalyzer:
-    """Analyzes video frames using MediaPipe to detect humans and calculate person coverage"""
+    """Analyzes video frames using YOLO to detect all objects and calculate person coverage percentage"""
 
     def __init__(self):
-        import mediapipe as mp
+        from ultralytics import YOLO
+        # Use YOLOv11 nano for speed - it will auto-download on first use
+        self.model = YOLO('yolo11n.pt')
 
-        # Initialize MediaPipe Pose detector
-        self.mp_pose = mp.solutions.pose
-        self.pose = self.mp_pose.Pose(
-            static_image_mode=False,
-            model_complexity=0,  # Fastest model (0=lite, 1=full, 2=heavy)
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
+        # Warm up model with a dummy prediction for faster first inference
+        import numpy as np
+        dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
+        self.model(dummy_frame, verbose=False)
 
-        logger.info("MediaPipe Pose Analyzer initialized (lite model)")
+        logger.info("YOLOPersonAnalyzer initialized with yolo11n.pt (warmed up)")
 
     async def analyze_frame(self, frame: np.ndarray) -> Dict[str, any]:
         """
-        Detect humans using MediaPipe and calculate coverage percentage
+        Detect all objects and calculate person coverage percentage for ranking
 
         Args:
-            frame: OpenCV frame (numpy array) in BGR format
+            frame: OpenCV frame (numpy array)
 
         Returns:
             Dict with 'score', 'person_percentage', 'person_count', 'reason', 'detections'
@@ -76,224 +75,148 @@ class YOLOPersonAnalyzer:
             # Get original frame dimensions
             original_height, original_width = frame.shape[:2]
 
-            # BLACK FRAME DETECTION
-            mean_luminance = np.mean(frame)
-            if mean_luminance < 10:
-                logger.warning(f"⚫ Black frame detected (luminance={mean_luminance:.1f})")
-                return {
-                    'score': 0.0,
-                    'person_percentage': 0.0,
-                    'person_count': 0,
-                    'reason': 'Black/inactive frame',
-                    'detections': []
-                }
+            # CRITICAL FIX: Upscale small frames for better YOLO detection
+            # Small frames (< 320px) cause YOLO to miss people
+            # We resize to 640x640 for optimal detection, then scale coordinates back
+            min_dimension = min(original_height, original_width)
+            if min_dimension < 320:
+                # Upscale to 640x640 for optimal YOLO performance
+                inference_frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_LINEAR)
+                scale_x = original_width / 640
+                scale_y = original_height / 640
+                logger.info(f"🔍 Upscaled frame from {original_width}x{original_height} to 640x640 for detection")
+            else:
+                # Frame is already good size, use as-is
+                inference_frame = frame
+                scale_x = 1.0
+                scale_y = 1.0
 
-            # Convert BGR to RGB for MediaPipe
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Run YOLO inference on properly-sized frame
+            # conf=0.15 (VERY LOW for maximum person detection sensitivity)
+            # iou=0.45 (NMS threshold - Ultralytics standard)
+            # max_det=300 (maximum detections)
+            # classes=[0] - ONLY detect people (class 0), ignore all other objects
+            results = self.model(inference_frame, conf=0.15, iou=0.45, max_det=300, classes=[0], verbose=False)
 
-            # Run MediaPipe Pose detection
-            results = self.pose.process(frame_rgb)
-
-            # Calculate frame area
+            # Calculate original frame area (for coverage percentage)
             frame_area = original_height * original_width
 
-            detections = []
-            person_count = 0
+            # Initialize counters
             total_person_area = 0
+            person_count = 0
+            detections = []
 
-            if results.pose_landmarks:
-                person_count = 1  # MediaPipe detects one person at a time
+            # Process all detections
+            for result in results:
+                for box in result.boxes:
+                    # Get bounding box coordinates from inference frame (xyxy format)
+                    x1_inference, y1_inference, x2_inference, y2_inference = box.xyxy[0].cpu().numpy()
+                    confidence = float(box.conf[0].cpu().numpy())
+                    class_id = int(box.cls[0].cpu().numpy())
+                    class_name = self.model.names[class_id]
 
-                # Get bounding box from landmarks
-                landmarks = results.pose_landmarks.landmark
+                    # Scale coordinates back to original frame size
+                    x1 = x1_inference * scale_x
+                    y1 = y1_inference * scale_y
+                    x2 = x2_inference * scale_x
+                    y2 = y2_inference * scale_y
 
-                # Filter visible landmarks (confidence > 0.5)
-                visible_landmarks = [lm for lm in landmarks if lm.visibility > 0.5]
+                    # FACE-ONLY MODE: Estimate face region from person detection
+                    # Face is typically in the top 25-30% of person height, centered horizontally
+                    if class_id == 0:  # Only for person class
+                        person_width = x2 - x1
+                        person_height = y2 - y1
 
-                if len(visible_landmarks) > 10:  # Need at least 10 visible landmarks
-                    # Calculate bounding box from visible landmarks
-                    x_coords = [lm.x * original_width for lm in visible_landmarks]
-                    y_coords = [lm.y * original_height for lm in visible_landmarks]
+                        # Face region: top 30% of height, center 70% of width
+                        face_height = person_height * 0.30
+                        face_width = person_width * 0.70
 
-                    x1 = max(0, min(x_coords) - 20)  # Add padding
-                    y1 = max(0, min(y_coords) - 20)
-                    x2 = min(original_width, max(x_coords) + 20)
-                    y2 = min(original_height, max(y_coords) + 20)
+                        # Center the face horizontally
+                        face_x0 = x1 + (person_width - face_width) / 2
+                        face_x1 = face_x0 + face_width
 
-                    # Calculate person area
-                    box_width = x2 - x1
-                    box_height = y2 - y1
-                    box_area = box_width * box_height
-                    total_person_area = box_area
+                        # Face at top of person bbox
+                        face_y0 = y1
+                        face_y1 = y1 + face_height
 
-                    # Calculate average confidence from visible landmarks
-                    avg_confidence = sum(lm.visibility for lm in visible_landmarks) / len(visible_landmarks)
+                        # Use face bbox instead of full person bbox
+                        detection = {
+                            'x0': float(face_x0),
+                            'y0': float(face_y0),
+                            'x1': float(face_x1),
+                            'y1': float(face_y1),
+                            'confidence': confidence,
+                            'classId': class_id,
+                            'className': 'face'  # Mark as face detection
+                        }
+                    else:
+                        # Non-person objects: use original bbox
+                        detection = {
+                            'x0': float(x1),
+                            'y0': float(y1),
+                            'x1': float(x2),
+                            'y1': float(y2),
+                            'confidence': confidence,
+                            'classId': class_id,
+                            'className': class_name
+                        }
 
-                    # Create detection object (YOLO-compatible format)
-                    detection = {
-                        'x0': float(x1),
-                        'y0': float(y1),
-                        'x1': float(x2),
-                        'y1': float(y2),
-                        'confidence': float(avg_confidence),
-                        'classId': 0,  # Keep as 0 for "person"
-                        'className': 'person',
-                        'landmarks': len(visible_landmarks)  # Extra info
-                    }
                     detections.append(detection)
 
-            # Calculate coverage percentage
+                    # Calculate person coverage for ranking (only for person class)
+                    if class_id == 0:  # person class
+                        box_width = x2 - x1
+                        box_height = y2 - y1
+                        box_area = box_width * box_height
+                        total_person_area += box_area
+                        person_count += 1
+
+            # Calculate percentage of screen covered by people (for ranking)
             person_percentage = (total_person_area / frame_area) * 100 if frame_area > 0 else 0
 
-            # Normalize to 0.0-1.0
+            # Normalize to 0.0-1.0 for compatibility with existing score system
             normalized_score = min(person_percentage / 100.0, 1.0)
 
-            # Generate reason
+            # Summary for reason
+            total_objects = len(detections)
             if person_count > 0:
-                landmark_count = detections[0]['landmarks'] if detections else 0
-                reason = f"1 person, {person_percentage:.1f}% coverage, {landmark_count} landmarks"
+                reason = f"{person_count} person(s), {person_percentage:.1f}% coverage"
             else:
-                reason = "No people detected"
+                reason = f"No people detected"
 
-            # Logging
-            logger.info(f"🎯 MediaPipe RESULT: {reason}, score={normalized_score:.3f}")
-            logger.info(f"   📐 Frame: {original_width}x{original_height}")
+            # DETAILED LOGGING for debugging
+            logger.info(f"🎯 YOLO DEV RESULT: {reason}, score={normalized_score:.3f}")
+            logger.info(f"   📐 Frame: {original_width}x{original_height}, Detections: {total_objects}")
             if person_count > 0:
-                logger.info(f"   👤 Found person covering {person_percentage:.1f}% of frame")
+                logger.info(f"   👤 Found {person_count} person(s) covering {person_percentage:.1f}% of frame")
+                for i, det in enumerate([d for d in detections if d['classId'] == 0][:3]):  # Log first 3 people
+                    logger.info(f"      Person {i+1}: confidence={det['confidence']:.2f}, bbox=({det['x0']:.0f},{det['y0']:.0f})-({det['x1']:.0f},{det['y1']:.0f})")
+            else:
+                logger.warning(f"   ⚠️  NO PEOPLE DETECTED in {original_width}x{original_height} frame")
 
             return {
                 'score': normalized_score,
                 'person_percentage': person_percentage,
                 'person_count': person_count,
                 'reason': reason,
-                'detections': detections
+                'detections': detections  # Include full detection data
             }
 
         except Exception as e:
-            logger.error(f"MediaPipe analysis error: {e}", exc_info=True)
+            logger.error(f"YOLO frame analysis error: {e}", exc_info=True)
             return {
                 'score': 0.0,
                 'person_percentage': 0.0,
                 'person_count': 0,
-                'reason': f'Analysis failed: {str(e)}',
+                'reason': f'YOLO analysis failed: {str(e)}',
                 'detections': []
             }
-
-
-class VideoAnalyzer:
-    """Analyzes video frames using OpenAI Vision API"""
-
-    ANALYSIS_PROMPT = """Analyze this video frame and rate the level of interest/engagement on a scale of 0.0 to 1.0.
-
-Scoring Guidelines:
-- 0.9-1.0: Exceptional - Multiple people, dynamic action, clear engagement
-- 0.8-0.9: High interest - Speaking, gesturing, visible emotions
-- 0.6-0.8: Good interest - People visible, some movement
-- 0.4-0.6: Moderate - People present but static, low energy
-- 0.2-0.4: Low interest - Distant people, minimal activity
-- 0.0-0.2: No interest - Empty scene, static background
-
-Consider:
-1. Number of people visible
-2. Engagement level (speaking, gesturing, eye contact)
-3. Movement and dynamics
-4. Composition and framing
-5. Context (meeting, presentation, casual)
-
-Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
-{"score": 0.75, "reason": "Brief description of what you see"}"""
-
-    def __init__(self):
-        self.client = openai_client
-        logger.info(f"VideoAnalyzer initialized with model: {OPENAI_MODEL}")
-
-    async def analyze_frame(self, frame: np.ndarray) -> Dict[str, any]:
-        """
-        Analyze a video frame and return engagement score
-
-        Args:
-            frame: OpenCV frame (numpy array)
-
-        Returns:
-            Dict with 'score' (float 0.0-1.0) and 'reason' (str)
-        """
-        try:
-            # Convert frame to JPEG with optimization
-            # Resize to 640x480 to reduce token usage
-            frame_resized = cv2.resize(frame, (640, 480))
-
-            # Encode as JPEG with 80% quality
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 80]
-            _, buffer = cv2.imencode('.jpg', frame_resized, encode_param)
-
-            # Convert to base64
-            base64_image = base64.b64encode(buffer).decode('utf-8')
-
-            logger.debug(f"Analyzing frame: {frame_resized.shape}, {len(base64_image)} bytes")
-
-            # Call OpenAI Vision API
-            response = await self.client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": self.ANALYSIS_PROMPT},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}",
-                                    "detail": "low"  # Use low detail for faster/cheaper analysis
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=100,
-                temperature=0.3  # Lower temperature for more consistent scoring
-            )
-
-            # Parse response
-            content = response.choices[0].message.content.strip()
-
-            # Remove markdown code blocks if present
-            if content.startswith('```'):
-                content = content.split('\n', 1)[1]
-                content = content.rsplit('\n', 1)[0]
-                if content.startswith('json'):
-                    content = content[4:].strip()
-
-            result = json.loads(content)
-
-            # Validate response
-            if 'score' not in result or 'reason' not in result:
-                raise ValueError(f"Invalid response format: {result}")
-
-            # Ensure score is in valid range
-            score = float(result['score'])
-            if not 0.0 <= score <= 1.0:
-                logger.warning(f"Score {score} out of range, clamping to [0.0, 1.0]")
-                score = max(0.0, min(1.0, score))
-
-            logger.info(f"Analysis complete: score={score:.2f}, reason={result['reason']}")
-
-            return {
-                'score': score,
-                'reason': result['reason']
-            }
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse OpenAI response: {e}, content: {content}")
-            return {'score': 0.5, 'reason': 'Analysis failed (JSON parse error)'}
-        except Exception as e:
-            logger.error(f"Frame analysis error: {e}", exc_info=True)
-            return {'score': 0.5, 'reason': f'Analysis failed: {str(e)}'}
 
 
 class LiveKitVideoWorker:
     """Connects to LiveKit room and processes video tracks"""
 
-    def __init__(self, analyzer: VideoAnalyzer, redis_client: redis.Redis):
+    def __init__(self, analyzer: YOLOPersonAnalyzer, redis_client: redis.Redis):
         self.analyzer = analyzer
         self.redis = redis_client
         self.room = rtc.Room()
@@ -309,6 +232,11 @@ class LiveKitVideoWorker:
             def track_subscribed_wrapper(track, publication, participant):
                 asyncio.create_task(self.on_track_subscribed(track, publication, participant))
 
+            # Handler for when a track is published (triggers subscription)
+            def track_published_wrapper(publication, participant):
+                asyncio.create_task(self.on_track_published(publication, participant))
+
+            self.room.on("track_published", track_published_wrapper)
             self.room.on("track_subscribed", track_subscribed_wrapper)
             self.room.on("track_unsubscribed", self.on_track_unsubscribed)
             self.room.on("participant_connected", self.on_participant_connected)
@@ -391,6 +319,23 @@ class LiveKitVideoWorker:
                     participant
                 )
 
+    async def on_track_published(
+        self,
+        publication: rtc.TrackPublication,
+        participant: rtc.RemoteParticipant
+    ):
+        """Handle new track publication - explicitly subscribe to it"""
+        if publication.kind == rtc.TrackKind.KIND_VIDEO:
+            logger.info(f"📢 Track published: {publication.name or 'unnamed'} from {participant.identity}")
+            logger.info(f"   Track SID: {publication.sid}, Subscribed: {publication.subscribed}")
+
+            # Explicitly set subscription to true to ensure we receive frames
+            try:
+                publication.set_subscribed(True)
+                logger.info(f"✓ Requested subscription for newly published track: {publication.sid}")
+            except Exception as e:
+                logger.error(f"Failed to subscribe to published track: {e}")
+
     async def on_track_subscribed(
         self,
         track: rtc.Track,
@@ -401,9 +346,28 @@ class LiveKitVideoWorker:
         if track.kind == rtc.TrackKind.KIND_VIDEO:
             # Create unique key for this track: participant_id:track_sid
             track_key = f"{participant.identity}:{track.sid}"
-            track_name = getattr(publication, 'name', 'unknown')
 
-            logger.info(f"🎥 Subscribed to video track: {participant.identity} - Track: {track_name} (SID: {track.sid})")
+            # CRITICAL: Check if we're already processing this track
+            if track_key in self.track_tasks:
+                logger.info(f"⏭️  Already processing track {track.sid}, skipping duplicate subscription")
+                return
+
+            # CRITICAL FIX: Get track name from publication.name
+            # If empty, use participant.name or participant.identity as fallback
+            # This ensures frontend can match the score by participant identity
+            if publication.name:
+                track_name = publication.name
+            elif participant.name:
+                track_name = participant.name
+            else:
+                track_name = participant.identity
+
+            # Log all identifiers for debugging
+            logger.info(f"🎥 Subscribed to video track:")
+            logger.info(f"   Participant: {participant.identity} ({participant.name})")
+            logger.info(f"   Track Name: {track_name}")
+            logger.info(f"   Track SID: {track.sid}")
+            logger.info(f"   Publication Name: {publication.name}")
 
             # Explicitly request track to be enabled and subscribed
             try:
@@ -469,13 +433,6 @@ class LiveKitVideoWorker:
                     height = frame.height
                     width = frame.width
 
-                    # Skip only EXTREMELY low-resolution streams (< 100px)
-                    # Most camera feeds are 192x108 or higher
-                    if width < 100 or height < 100:
-                        logger.debug(f"⏭️  Skipping too-small frame {width}x{height} from {track_identifier}")
-                        await asyncio.sleep(FRAME_SAMPLE_INTERVAL)
-                        continue
-
                     # Convert I420 format to RGB using the frame's conversion method
                     # LiveKit frames are typically in I420 (YUV) format
                     try:
@@ -509,17 +466,12 @@ class LiveKitVideoWorker:
                     # Analyze frame
                     result = await self.analyzer.analyze_frame(frame_bgr)
 
-                    # Add frame counter to verify freshness on frontend
-                    result['frame_id'] = frame_count
-                    result['frame_size'] = f"{width}x{height}"
-
-                    # CRITICAL FIX: Use track_name as unique identifier (not participant_id)
-                    # This ensures each camera gets its own score instead of sharing
-                    # If no track_name, use trackSid for uniqueness
-                    score_id = track_name if track_name else track_sid
+                    # Publish score to Redis using participant ID
+                    # Frontend looks up scores by participant identity, track_name, AND track_sid
+                    score_id = participant_id
                     await self.publish_score(score_id, result, track_name=track_name, track_sid=track_sid)
 
-                    # Wait before processing next frame
+                    # Wait before processing next frame (1 FPS = 1 second interval)
                     await asyncio.sleep(FRAME_SAMPLE_INTERVAL)
 
                 except Exception as e:
@@ -532,38 +484,35 @@ class LiveKitVideoWorker:
             logger.error(f"Fatal error in video processing for {track_identifier}: {e}", exc_info=True)
 
     async def publish_score(self, score_id: str, result: Dict[str, any], track_name: str = "", track_sid: str = ""):
-        """Publish score and detection data to Redis pub/sub"""
+        """Publish score and detection data to Redis pub/sub (main ranking channel)"""
         try:
             display_name = track_name if track_name else score_id
 
+            # Ensure track_sid is a string (convert if needed)
+            track_sid_str = str(track_sid) if track_sid else ""
+
             message = {
-                'type': 'score',
+                'type': 'score',  # Main ranking score
                 'payload': {
                     'cam_id': score_id,
                     'camId': score_id,
                     'score': result['score'],
                     'reason': result['reason'],
                     'timestamp': int(time.time() * 1000),
-                    'track_name': track_name,  # Include track name for better identification
-                    'track_sid': track_sid,  # Include trackSid for frontend mapping
-                    'detections': result.get('detections', []),  # Include detection bounding boxes
-                    'frame_id': result.get('frame_id', 0),  # Frame counter for freshness verification
-                    'frame_size': result.get('frame_size', 'unknown')  # Frame dimensions
+                    'track_name': track_name,
+                    'track_sid': track_sid_str,
+                    'detections': result.get('detections', []),
+                    'person_count': result.get('person_count', 0),
+                    'person_percentage': result.get('person_percentage', 0.0)
                 }
             }
 
-            # Publish to Redis channel (production)
+            # Publish to main Redis ranking channel
             await self.redis.publish('scores.stream', json.dumps(message))
 
-            # ALSO publish to YOLO DEV channel with different message type
-            dev_message = {
-                'type': 'yolo-dev-score',
-                'payload': message['payload']
-            }
-            await self.redis.publish('scores.yolo-dev', json.dumps(dev_message))
-
             detection_count = len(result.get('detections', []))
-            logger.info(f"📊 Published score for {display_name}: {result['score']:.2f} ({detection_count} detections)")
+            logger.info(f"📊 Published YOLO score for {display_name}: {result['score']:.2f} ({detection_count} detections)")
+            logger.info(f"   Keys in payload: cam_id={score_id}, track_name={track_name}, track_sid={track_sid_str}")
 
         except Exception as e:
             logger.error(f"Failed to publish score: {e}", exc_info=True)
@@ -574,8 +523,8 @@ async def generate_worker_token() -> str:
     from livekit.api import AccessToken, VideoGrants
 
     token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
-    token.with_identity("analysis-worker")
-    token.with_name("AI Analysis Worker")
+    token.with_identity("analysis-worker-dev")  # Different identity for dev worker
+    token.with_name("AI Analysis Worker (DEV)")
     token.with_grants(VideoGrants(
         room_join=True,
         room=ROOM_NAME,
@@ -589,28 +538,24 @@ async def generate_worker_token() -> str:
 async def main():
     """Main worker loop"""
     logger.info("=" * 80)
-    logger.info("🤖 MediaPipe Person Detection Worker Starting")
+    logger.info("🤖 YOLO Person Detection Worker Starting")
     logger.info("=" * 80)
-    logger.info(f"OpenAI Model: {OPENAI_MODEL} (running in background)")
     logger.info(f"LiveKit URL: {LIVEKIT_URL}")
     logger.info(f"Redis URL: {REDIS_URL}")
+    logger.info(f"Redis Channel: scores.stream (MAIN RANKING)")
     logger.info(f"Room: {ROOM_NAME}")
     logger.info(f"Frame Sample Interval: {FRAME_SAMPLE_INTERVAL}s")
-    logger.info(f"Ranking Method: MediaPipe Pose Coverage Percentage")
+    logger.info(f"Ranking Method: YOLO Person Detection Count")
     logger.info("=" * 80)
 
     # Initialize Redis
     redis_client = await redis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
     logger.info("✅ Connected to Redis")
 
-    # Initialize MediaPipe analyzer (used for ranking)
-    analyzer = YOLOPersonAnalyzer()  # Keep name for compatibility
+    # Initialize YOLO analyzer
+    analyzer = YOLOPersonAnalyzer()
 
-    # Keep AI analyzer running in background (not used for ranking, but available)
-    ai_analyzer = VideoAnalyzer()
-    logger.info("ℹ️  AI VLM analyzer initialized but not used for ranking")
-
-    # Initialize LiveKit worker with MediaPipe analyzer
+    # Initialize LiveKit worker with YOLO analyzer
     worker = LiveKitVideoWorker(analyzer, redis_client)
 
     # Generate worker token
@@ -619,7 +564,7 @@ async def main():
     # Connect to room
     await worker.connect(LIVEKIT_URL, token)
 
-    logger.info("🚀 Worker is running. Press Ctrl+C to stop.")
+    logger.info("🚀 YOLO DEV Worker is running. Press Ctrl+C to stop.")
 
     # Keep running
     try:
@@ -630,7 +575,7 @@ async def main():
     finally:
         await worker.room.disconnect()
         await redis_client.close()
-        logger.info("👋 Worker stopped")
+        logger.info("👋 YOLO DEV Worker stopped")
 
 
 if __name__ == "__main__":
