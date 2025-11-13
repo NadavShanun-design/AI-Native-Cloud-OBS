@@ -23,6 +23,46 @@
   font-weight: 600;
 }
 
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+}
+
+.modelSelector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modelSelector label {
+  font-size: 14px;
+  color: #888;
+  font-weight: 500;
+}
+
+.modelSelect {
+  padding: 8px 16px;
+  background: #0f0f0f;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modelSelect:hover {
+  border-color: #4F46E5;
+  background: #1a1a1a;
+}
+
+.modelSelect:focus {
+  outline: none;
+  border-color: #4F46E5;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+}
+
 .status {
   display: flex;
   align-items: center;
@@ -176,9 +216,58 @@
   font-weight: 600;
 }
 
+.historyHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .historyCount {
   font-size: 14px;
   color: #888;
+}
+
+.exportButton,
+.clearButton {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid;
+}
+
+.exportButton {
+  background: #4F46E5;
+  border-color: #4F46E5;
+  color: #fff;
+}
+
+.exportButton:hover:not(:disabled) {
+  background: #4338CA;
+  border-color: #4338CA;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3);
+}
+
+.clearButton {
+  background: transparent;
+  border-color: #333;
+  color: #888;
+}
+
+.clearButton:hover:not(:disabled) {
+  background: #ff4444;
+  border-color: #ff4444;
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.exportButton:disabled,
+.clearButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .historyList {
@@ -215,6 +304,22 @@
   font-weight: 600;
   color: #4F46E5;
   font-size: 14px;
+}
+
+.historyItemMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.historyItemModel {
+  font-size: 11px;
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.1);
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
 .historyItemTime {

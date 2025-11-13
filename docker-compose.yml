@@ -148,9 +148,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 12G  # Allocate 12GB RAM for VLM inference
+          memory: 16G  # Increased to 16GB RAM for larger VLM models
         reservations:
-          memory: 8G
+          memory: 12G
 
 volumes:
   redis-data:
