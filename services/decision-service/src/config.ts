@@ -6,7 +6,15 @@ export const config = {
   },
 
   postgres: {
-    url: process.env.POSTGRES_URL || 'postgresql://aiobs:aiobs_dev_local@localhost:5432/aiobs',
+    // Fail closed: no default database credential ships in the repo.
+    // Set POSTGRES_URL in your environment (see .env.example).
+    url: (() => {
+      const url = process.env.POSTGRES_URL;
+      if (!url) {
+        throw new Error('POSTGRES_URL is required - no default database credential ships in the repo (see .env.example).');
+      }
+      return url;
+    })(),
   },
 
   server: {
