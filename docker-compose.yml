@@ -16,7 +16,7 @@ services:
     environment:
       POSTGRES_DB: aiobs
       POSTGRES_USER: aiobs
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aiobs_dev_local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env - see .env.example}
     ports:
       - "5432:5432"
     volumes:
@@ -78,7 +78,7 @@ services:
       dockerfile: services/decision-service/Dockerfile
     environment:
       - REDIS_URL=redis://redis:6379
-      - POSTGRES_URL=postgresql://aiobs:${POSTGRES_PASSWORD:-aiobs_dev_local}@postgres:5432/aiobs
+      - POSTGRES_URL=postgresql://aiobs:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env - see .env.example}@postgres:5432/aiobs
       - MIN_HOLD_SEC=2.0
       - COOLDOWN_SEC=4.0
       - DELTA_S_THRESHOLD=0.15
@@ -164,7 +164,7 @@ services:
       dockerfile: services/api-gateway/Dockerfile
     environment:
       - REDIS_URL=redis://redis:6379
-      - POSTGRES_URL=postgresql://aiobs:${POSTGRES_PASSWORD:-aiobs_dev_local}@postgres:5432/aiobs
+      - POSTGRES_URL=postgresql://aiobs:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env - see .env.example}@postgres:5432/aiobs
       - LIVEKIT_URL=${LIVEKIT_URL}
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
