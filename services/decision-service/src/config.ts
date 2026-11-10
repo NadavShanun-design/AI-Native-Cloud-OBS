@@ -6,7 +6,7 @@ export const config = {
   },
 
   postgres: {
-    url: process.env.POSTGRES_URL || 'postgresql://aiobs:aiobs_dev@localhost:5432/aiobs',
+    url: process.env.POSTGRES_URL || 'postgresql://aiobs:aiobs_dev_local@localhost:5432/aiobs',
   },
 
   server: {
